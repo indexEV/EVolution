@@ -1,7 +1,3 @@
-HEAD
-# EVolution
-Competitive Pokémon EV spread optimizer using brute-force search. Guarantee survival, secure OHKOs, or outspeed threats while maximizing efficiency. Built with Smogon's official damage calc library.
-
 # EV'olution
 
 Competitive Pokémon EV spread optimizer built for serious players.
@@ -39,4 +35,3 @@ git clone https://github.com/indexev/EVolution.git
 cd EVolution
 npm install
 npm run dev
->>>>>>> c8f72e86189094634083d6ae60238dbc986c0414
