@@ -1,0 +1,32 @@
+{
+  "name": "ev'olution",
+  "type": "module",
+  "version": "1.0.0",
+  "homepage": "https://indexev.github.io/EVolution/",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@pkmn/data": "^0.10.7",
+    "@pkmn/dex": "^0.10.7",
+    "@pkmn/sets": "^5.2.0",
+    "@pkmn/smogon": "^0.5.29",
+    "@smogon/calc": "^0.10.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.4",
+    "gh-pages": "^6.3.0",
+    "vite": "^7.3.1"
+  }
+}

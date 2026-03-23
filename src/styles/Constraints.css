@@ -1,0 +1,367 @@
+/* ── Constraints (Step 6) ──────────────────────────────────────────────────── */
+
+.constraints {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── Empty state ── */
+.constraints-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: #555;
+}
+
+.constraints-empty-icons {
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  margin-bottom: 24px;
+}
+
+.constraints-empty-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.constraints-empty-icon img {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  opacity: 0.35;
+  filter: brightness(0) invert(1);
+}
+
+.constraints-empty-icon span {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #444;
+}
+
+.constraints-empty p {
+  font-size: 13px;
+  color: #444;
+  line-height: 1.7;
+  margin: 0;
+}
+
+/* ── Constraint list ── */
+.constraints-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Individual card ── */
+.constraint-card {
+  background: var(--c-accent, #0a0a0a);
+  border: 1px solid #2a2a2a;
+  border-left: 3px solid var(--c-color, #444);
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Type selector row ── */
+.constraint-type-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.constraint-type-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 16px;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex: 1;
+  max-width: 110px;
+}
+
+.constraint-type-btn:hover {
+  border-color: #444;
+  background: #1a1a1a;
+}
+
+.constraint-type-btn.active {
+  background: #1a1a1a;
+  border-color: var(--btn-color, #fff);
+  box-shadow: 0 0 12px rgba(255,255,255,0.05);
+}
+
+.constraint-type-img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+  opacity: 0.35;
+  transition: opacity 0.15s;
+}
+
+.constraint-type-btn.active .constraint-type-img {
+  opacity: 1;
+  filter: none;
+}
+
+.constraint-type-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #444;
+  transition: color 0.15s;
+}
+
+.constraint-type-btn.active .constraint-type-label {
+  color: var(--btn-color, #fff);
+}
+
+.constraint-delete-btn {
+  margin-left: auto;
+  background: none;
+  border: 1px solid #2a2a2a;
+  color: #444;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.constraint-delete-btn:hover {
+  border-color: #f55;
+  color: #f55;
+  background: rgba(255, 50, 50, 0.08);
+}
+
+/* ── Divider ── */
+.constraint-divider {
+  height: 1px;
+  background: #1e1e1e;
+}
+
+/* ── Content rows ── */
+.constraint-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.constraint-row-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #555;
+  text-transform: uppercase;
+  min-width: 72px;
+  padding-top: 6px;
+  flex-shrink: 0;
+}
+
+/* ── Generic pill toggle ── */
+.constraint-pill {
+  padding: 5px 13px;
+  border-radius: 20px;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  color: #555;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.constraint-pill:hover { border-color: #444; color: #999; }
+.constraint-pill.active {
+  background: #1e1e1e;
+  border-color: var(--c-color, #fff);
+  color: var(--c-color, #fff);
+}
+
+/* ── Move pills ── */
+.constraint-move-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+
+.constraint-move-pill {
+  padding: 5px 12px;
+  border-radius: 8px;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  color: #666;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.constraint-move-pill:hover { border-color: #444; color: #aaa; }
+.constraint-move-pill.active {
+  background: #1e1e1e;
+  border-color: var(--c-color, #fff);
+  color: #fff;
+}
+
+.constraint-no-moves {
+  font-size: 11px;
+  color: #333;
+  font-style: italic;
+  padding-top: 6px;
+}
+
+/* ── Threat pills ── */
+.constraint-threat-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.constraint-threat-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 6px;
+  border-radius: 20px;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  color: #555;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.constraint-threat-pill:hover { border-color: #444; color: #999; }
+.constraint-threat-pill.active {
+  background: #1a1a1a;
+  border-color: #666;
+  color: #ccc;
+}
+
+.constraint-threat-pill.add {
+  padding: 5px 13px;
+  border-style: dashed;
+  border-color: #333;
+  color: #555;
+}
+.constraint-threat-pill.add:hover { border-color: var(--c-color, #888); color: var(--c-color, #aaa); }
+
+.constraint-threat-sprite {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
+/* ── Speed row (scarf type) ── */
+.constraint-speed-content {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+
+.constraint-speed-stage {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 4px 10px;
+}
+
+.constraint-spe-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.constraint-stage-adj {
+  width: 20px;
+  height: 20px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #888;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  transition: all 0.1s;
+}
+
+.constraint-stage-adj:hover:not(:disabled) { border-color: #666; color: #fff; }
+.constraint-stage-adj:disabled { opacity: 0.25; cursor: not-allowed; }
+
+.constraint-stage-val {
+  font-size: 13px;
+  font-weight: 700;
+  min-width: 24px;
+  text-align: center;
+}
+
+.constraint-stage-base {
+  font-size: 10px;
+  color: #555;
+  font-weight: 400;
+  margin-left: 2px;
+}
+
+.constraint-pill.condition-pill {
+  font-style: italic;
+  border-style: dashed;
+}
+.constraint-pill.condition-pill:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+.constraints-add-btn {
+  padding: 14px 20px;
+  background: transparent;
+  border: 1.5px dashed #2a2a2a;
+  border-radius: 12px;
+  color: #444;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.04em;
+}
+
+.constraints-add-btn:hover {
+  border-color: #555;
+  color: #888;
+  background: #0f0f0f;
+}

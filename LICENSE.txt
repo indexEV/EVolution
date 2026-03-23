@@ -1,0 +1,22 @@
+EV/olution License
+
+Copyright (c) 2025 indexEV
+
+Permission is hereby granted to view and study this software for educational 
+purposes only.
+
+You may NOT:
+- Use this software for commercial purposes without written permission
+- Redistribute, sell, or sublicense this software
+- Create derivative works or competing products based on this code
+- Remove or alter this license
+
+You MAY:
+- Submit bug reports and feature suggestions via GitHub Issues
+- Fork the repository to propose improvements via Pull Requests
+- Use the hosted version at https://indexev.github.io/EVolution/ within the terms of service
+
+Commercial licensing, hosting rights, and investment inquiries:
+contact index.error404@gmail.com
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
