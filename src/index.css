@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 body {
   margin: 0;
   padding: 0;
@@ -9,16 +9,5 @@ body {
 
 * {
   box-sizing: border-box;
-=======
-body {
-  margin: 0;
-  padding: 0;
-  font-family: system-ui, -apple-system, sans-serif;
-  background: #0a0a0a;
-  color: #fff;
-}
 
-* {
-  box-sizing: border-box;
->>>>>>> c8f72e86189094634083d6ae60238dbc986c0414
 }
