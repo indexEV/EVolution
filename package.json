@@ -1,9 +1,9 @@
 {
-  "name": "ev'olution",
-  "type": "module",
+  "name": "ev-olution",
   "version": "1.0.0",
+  "description": "Pokemon EV Brute Force tool",
+  "type": "module",
   "homepage": "https://indexev.github.io/EVolution/",
-  "description": "",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
@@ -12,8 +12,8 @@
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["pokemon", "ev", "calculator", "react", "vite"],
+  "author": "Index",
   "license": "ISC",
   "dependencies": {
     "@pkmn/data": "^0.10.7",
