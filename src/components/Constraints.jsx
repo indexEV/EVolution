@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react';
 import ThreatModal from './ThreatModal';
 import '../styles/Constraints.css';
+import RustedShieldImg  from '../assets/RustedShield.png';
+import RustedSwordImg   from '../assets/RustedSword.png';
+import ChoiceScarfImg   from '../assets/ChoiceScarf.png';
 
 const SPRITE_BASE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork';
 const ATK_COLOR = '#B8D8FF';
 const SPE_COLOR = '#F8B860';
 
 const TYPE_META = {
-  shield: { img: '/RustedShield.png', label: 'Survive',  color: '#78c850', accent: 'rgba(120,200,80,0.07)'  },
-  sword:  { img: '/RustedSword.png',  label: 'KO',       color: '#f85050', accent: 'rgba(248,80,80,0.07)'   },
-  scarf:  { img: '/ChoiceScarf.png',  label: 'Outspeed', color: '#60c8f8', accent: 'rgba(96,200,248,0.07)'  },
+  shield: { img: RustedShieldImg, label: 'Survive',  color: '#78c850', accent: 'rgba(120,200,80,0.07)'  },
+  sword:  { img: RustedSwordImg,  label: 'KO',       color: '#f85050', accent: 'rgba(248,80,80,0.07)'   },
+  scarf:  { img: ChoiceScarfImg,  label: 'Outspeed', color: '#60c8f8', accent: 'rgba(96,200,248,0.07)'  },
 };
 
 const clamp = (v, min = -6, max = 6) => Math.max(min, Math.min(max, v));

@@ -4,6 +4,8 @@ import { createPortal } from 'react-dom';
 import { Dex } from '@pkmn/dex';
 import { Generations } from '@pkmn/data';
 import '../styles/PokemonSelector.css';
+import shinyBlackImg from '../assets/shinyBLACK.png';
+import shinyWhiteImg from '../assets/shinyWHITE.png';
 
 // ── Marquee hook for overflowing names ──────────────────────────────────────
 function useMarqueeOnOverflow(deps = []) {
@@ -1929,7 +1931,7 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
                 style={{ position: 'relative', zIndex: 1 }}
               >
                 <img
-                  src={isShiny ? '/shinyBLACK.png' : '/shinyWHITE.png'}
+                  src={isShiny ? shinyBlackImg : shinyWhiteImg}
                   alt="shiny"
                   className="shiny-icon"
                 />

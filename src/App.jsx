@@ -5,6 +5,8 @@ import PokemonSelector from './components/PokemonSelector'
 import FieldConditions from './components/FieldConditions'
 import Constraints from './components/Constraints'
 import Results from './components/Results'
+import TyphlosionImg from './assets/Typhlosion.png';
+import ChandelureImg from './assets/chandelure.png';
 import { toShowdownSet } from './solver/solver.js'
 import './App.css'
 
@@ -427,9 +429,9 @@ export default function App() {
   return (
     <ErrorBoundary>
     <div className="app">
-      <img src="/Typhlosion.png" alt="" className="typhlosion-bg" />
-      <img src="/chandelure.png" alt="" className="chandelure-bg" />
-      <img src="/chandelure.png" alt="" className="chandelure-bg" />
+      <img src={TyphlosionImg} alt="" className="typhlosion-bg" />
+      <img src={ChandelureImg}  alt="" className="chandelure-bg" />
+      <img src={ChandelureImg}  alt="" className="chandelure-bg" />
 
       <header className="app-header">
         <div className="header-bubble-wrap">
