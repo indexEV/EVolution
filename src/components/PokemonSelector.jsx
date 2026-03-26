@@ -531,11 +531,12 @@ function getModifierPills(selectedAbility, status, entryPillDefs, effectiveAbili
   // Transform modifier — Ditto-Limber (any non-Imposter ability), Mew, Smeargle
   // pokemonId is from @pkmn/data: 'ditto', 'mew', 'smeargle'
   const pid = (pokemonId ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const isTransformUser = ['mew','smeargle'].includes(pid) || (pid === 'ditto' && ab !== 'imposter');
+  const ownAb = _normAb(selectedAbility); // always the pokemon's OWN ability, never copied
+  const isTransformUser = ['mew','smeargle'].includes(pid) || (pid === 'ditto' && ownAb !== 'imposter');
   if (isTransformUser) push('transformpill', 'Transform');
   // "Copy Stat Changes" — shown for Imposter (always visible) and transform users (only when transform ON)
   // Note: actual filtering for transformpill is done in JSX (.filter step)
-  const isImposter = ab === 'imposter' || _normAb(selectedAbility) === 'imposter';
+  const isImposter = ownAb === 'imposter';
   if (isImposter || isTransformUser) push('copystatchanges', 'Copy Stat Changes');
   if (ab === 'electromorphosis')push('electromorphosis','Electromorphosis'); // charges Electric (no stage)
   // Opportunist / Mirror Herb: copy opp stat boosts — informational toggle only
@@ -926,6 +927,51 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
     if (toEnable.size > 0)
       setActiveModifiers(prev => { const n = new Set(prev); toEnable.forEach(id => n.add(id)); return n; });
   }, [tracedAbility, fieldConditions]);
+
+  // ── Reactive: enable/disable condition-dependent modifiers when fieldConditions changes ──
+  // Runs for BOTH native abilities and copied abilities (tracedAbility).
+  // This correctly handles cases like Miraidon vs faster Rillaboom: Grassy Terrain wins,
+  // so Hadron Engine should be OFF even though Miraidon natively has it.
+  useEffect(() => {
+    if (!fieldConditions) return;
+    const effectiveAb = _normAb(tracedAbility ?? selectedAbility);
+    const weather = fieldConditions?.field?.weather ?? null;
+    const terrain = fieldConditions?.field?.terrain ?? null;
+
+    const SUN  = weather === 'sun' || weather === 'harshSunshine';
+    const RAIN = weather === 'rain' || weather === 'heavyRain';
+    const SAND = weather === 'sand';
+    const SNOW = weather === 'snow';
+    const ELEC = terrain === 'electric';
+    const GRASSY = terrain === 'grassy';
+
+    // Map: ability id → whether its condition is currently met
+    const CONDITION_MAP = {
+      hadronengine:    ELEC,
+      orichalcumpulse: SUN,
+      quarkdrive:      ELEC,
+      protosynthesis:  SUN,
+      chlorophyll:     SUN,
+      swiftswim:       RAIN,
+      sandrush:        SAND,
+      slushrush:       SNOW,
+      surgesurfer:     ELEC,
+      solarpower:      SUN,
+      flowergift:      SUN,
+      sandforce:       SAND,
+      seedsower:       GRASSY,
+    };
+
+    if (effectiveAb in CONDITION_MAP) {
+      const condMet = CONDITION_MAP[effectiveAb];
+      setActiveModifiers(prev => {
+        const n = new Set(prev);
+        if (condMet) n.add(effectiveAb);
+        else n.delete(effectiveAb);
+        return n;
+      });
+    }
+  }, [fieldConditions, selectedAbility, tracedAbility]);
 
   // ── Transformation item lock ─────────────────────────────────────────────
   // These pokemon must hold their transformation item — user cannot change it.

@@ -10,11 +10,13 @@
       default-src 'self';
       script-src 'self';
       style-src 'self' 'unsafe-inline';
-      img-src 'self' data:;
+      img-src 'self' data: https://raw.githubusercontent.com https://img.pokemondb.net https://pokeapi.co;
+      connect-src 'self' https://pokeapi.co;
       frame-ancestors 'none';
     ">
   </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
