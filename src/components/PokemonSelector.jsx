@@ -81,6 +81,7 @@ const PokemonSelector = forwardRef(({
     });
   }, [modifierPills, state.setActiveModifiers]);
 
+  // Expose state to parent via ref
   useImperativeHandle(ref, () => ({
     getState: () => ({
       pokemon: initialPokemon,
@@ -101,12 +102,15 @@ const PokemonSelector = forwardRef(({
       const normalizedStages = effectiveStages;
       const stats = state.calculatedStats ?? {};
       const finalStats = { ...stats };
+
       const itemGetter = Dex?.items?.get;
       let normalizedItem = state.selectedItem ?? null;
 
       if (typeof normalizedItem === 'string' && typeof itemGetter === 'function') {
         const lookedUp = itemGetter(normalizedItem);
-        normalizedItem = lookedUp?.exists ? lookedUp : { name: normalizedItem, id: normalizeAbilityName(normalizedItem) };
+        normalizedItem = lookedUp?.exists
+          ? lookedUp
+          : { name: normalizedItem, id: normalizeAbilityName(normalizedItem) };
       } else if (normalizedItem && typeof normalizedItem === 'object' && !normalizedItem.id && normalizedItem.name) {
         normalizedItem = { ...normalizedItem, id: normalizeAbilityName(normalizedItem.name) };
       }
@@ -114,7 +118,15 @@ const PokemonSelector = forwardRef(({
       for (const stat of ['atk', 'def', 'spa', 'spd', 'spe']) {
         const stage = normalizedStages[stat] ?? 0;
         const stagedVal = Math.max(1, Math.floor((stats[stat] ?? 0) * (stage >= 0 ? (2 + stage) / 2 : 2 / (2 - stage))));
-        finalStats[stat] = applyModifiers(stat, stagedVal, finalStats, state.selectedAbility, state.activeModifiers, state.stackCounts, effectiveAbility);
+        finalStats[stat] = applyModifiers(
+          stat,
+          stagedVal,
+          finalStats,
+          state.selectedAbility,
+          state.activeModifiers,
+          state.stackCounts,
+          effectiveAbility
+        );
       }
 
       const shownBaseStats = effectivePokemon?.baseStats
