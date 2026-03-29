@@ -31,10 +31,7 @@ const PokemonSelector = forwardRef(({
   onLevelChange = null,
   fieldConditions = null,
 }, ref) => {
-  // Main state hook
   const state = usePokemonState(initialPokemon, onStateChange);
-
-  // Move filtering hook
   const moveState = useMoveFiltering(initialPokemon, state.selectedAbility);
 
   const hasTransformMove = React.useMemo(
@@ -105,17 +102,31 @@ const PokemonSelector = forwardRef(({
       const normalizedStages = effectiveStages;
       const stats = state.calculatedStats ?? {};
       const finalStats = { ...stats };
+
+      const itemGetter = Dex?.items?.get;
       let normalizedItem = state.selectedItem ?? null;
-      if (typeof normalizedItem === 'string' && typeof Dex?.items?.get === 'function') {
-        const lookedUp = Dex.items.get(normalizedItem);
-        normalizedItem = lookedUp?.exists ? lookedUp : { name: normalizedItem, id: normalizeAbilityName(normalizedItem) };
+
+      if (typeof normalizedItem === 'string' && typeof itemGetter === 'function') {
+        const lookedUp = itemGetter(normalizedItem);
+        normalizedItem = lookedUp?.exists
+          ? lookedUp
+          : { name: normalizedItem, id: normalizeAbilityName(normalizedItem) };
       } else if (normalizedItem && typeof normalizedItem === 'object' && !normalizedItem.id && normalizedItem.name) {
         normalizedItem = { ...normalizedItem, id: normalizeAbilityName(normalizedItem.name) };
       }
+
       for (const stat of ['atk', 'def', 'spa', 'spd', 'spe']) {
         const stage = normalizedStages[stat] ?? 0;
         const stagedVal = Math.max(1, Math.floor((stats[stat] ?? 0) * (stage >= 0 ? (2 + stage) / 2 : 2 / (2 - stage))));
-        finalStats[stat] = applyModifiers(stat, stagedVal, finalStats, state.selectedAbility, state.activeModifiers, state.stackCounts, effectiveAbility);
+        finalStats[stat] = applyModifiers(
+          stat,
+          stagedVal,
+          finalStats,
+          state.selectedAbility,
+          state.activeModifiers,
+          state.stackCounts,
+          effectiveAbility
+        );
       }
 
       const shownBaseStats = effectivePokemon?.baseStats
@@ -167,8 +178,10 @@ const PokemonSelector = forwardRef(({
     loadShowdownSet: (text) => {
       const parsed = parseShowdownSet(text ?? '');
       if (!parsed?.pokeName) return { success: false, error: 'Could not parse set.' };
+
       const species = Dex.species.get(parsed.pokeName);
       if (!species?.exists) return { success: false, error: `Unknown Pokémon: ${parsed.pokeName}` };
+
       onSelect?.({ name: species.name, id: species.id, num: species.num, baseStats: species.baseStats });
       state.setSelectedAbility(parsed.ability ?? null);
       state.setSelectedNature(parsed.nature ?? 'Hardy');
@@ -176,24 +189,24 @@ const PokemonSelector = forwardRef(({
       state.setUserEvs(parsed.evs);
       state.setEvRaw(Object.fromEntries(Object.entries(parsed.evs).map(([k, v]) => [k, String(v)])));
       state.setUserIvs(parsed.ivs);
+
       if (parsed.itemName) state.setSelectedItem(parsed.itemName);
+
       const parsedMoves = (parsed.moves ?? []).slice(0, 4).map(name => {
         const m = Dex.moves.get(name);
         return m?.exists ? { name: m.name, id: m.id, basePower: m.basePower, type: m.type } : null;
       });
+
       moveState.setSelectedMoves([parsedMoves[0] ?? null, parsedMoves[1] ?? null, parsedMoves[2] ?? null, parsedMoves[3] ?? null]);
       return { success: true };
     },
     resetState: state.resetState,
   }), [initialPokemon, moveState, onSelect, state, effectiveStages, effectivePokemon, isTransformActive, effectiveAbility]);
 
-  // Handle pokemon selection
   const handleSelectPokemon = (pokemon) => {
-    // Update selected pokemon logic here
     if (onSelect) onSelect(pokemon);
   };
 
-  // Calculate stats based on inputs
   const calculateStats = React.useCallback(() => {
     if (!effectivePokemon) return null;
 
@@ -214,9 +227,8 @@ const PokemonSelector = forwardRef(({
       const level = parseInt(state.levelRaw) || 100;
       const calculated = {};
 
-      // Stat calculation formula
       for (const stat of ['hp', 'atk', 'def', 'spa', 'spd', 'spe']) {
-        let base = baseStats[stat];
+        const base = baseStats[stat];
         const iv = state.userIvs[stat] ?? 31;
         const ev = state.userEvs[stat] ?? 0;
 
@@ -225,13 +237,10 @@ const PokemonSelector = forwardRef(({
           calculated[stat] = Math.floor((2 * hpBase + iv + ev / 4) * level / 100 + level + 10);
         } else {
           let val = Math.floor((2 * base + iv + ev / 4) * level / 100 + 5);
-          
-          // Apply nature boost/drop
           const nature = state.selectedNature;
           const natureData = NATURES[nature];
           if (natureData?.boost === stat) val = Math.floor(val * 1.1);
           if (natureData?.drop === stat) val = Math.floor(val * 0.9);
-
           calculated[stat] = val;
         }
       }
@@ -248,7 +257,6 @@ const PokemonSelector = forwardRef(({
     state.setCalculatedStats(stats);
   }, [calculateStats, state.setCalculatedStats]);
 
-  // Handle outside clicks to close dropdowns
   React.useEffect(() => {
     const handleClick = (e) => {
       if (!e.target.closest('.pokemon-selector-root')) {
@@ -262,11 +270,8 @@ const PokemonSelector = forwardRef(({
 
   return (
     <div className="pokemon-selector-root" style={{ padding: 16, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.4)' }}>
-      <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>
-        {title}
-      </div>
+      <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>{title}</div>
 
-      {/* Main Content */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <PokemonForm
           searchTerm={state.searchTerm}
@@ -314,5 +319,4 @@ const PokemonSelector = forwardRef(({
 });
 
 PokemonSelector.displayName = 'PokemonSelector';
-
 export default PokemonSelector;
