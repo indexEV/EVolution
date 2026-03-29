@@ -5,8 +5,6 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Dex } from '@pkmn/dex';
-import { Generations } from '@pkmn/data';
-import { getAllLearnableIds } from '../utils/learnsets';
 import { normalizeAbilityName } from '../utils/display';
 
 export function usePokemonState(initialPokemon = null, onStateChange = null) {
@@ -113,7 +111,6 @@ export function usePokemonState(initialPokemon = null, onStateChange = null) {
 
   // Load all pokemon on mount
   useEffect(() => {
-    const gen = Generations.get(9);
     const pokes = Array.from(Dex.species)
       .filter(([_, p]) => p.gen <= 9 && !p.isNonstandard)
       .map(([_, p]) => ({ name: p.name, id: p.id }))
