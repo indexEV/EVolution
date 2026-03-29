@@ -105,6 +105,14 @@ const PokemonSelector = forwardRef(({
       const normalizedStages = effectiveStages;
       const stats = state.calculatedStats ?? {};
       const finalStats = { ...stats };
+      const itemGetter = Dex?.items?.get;
+      let normalizedItem = state.selectedItem ?? null;
+      if (typeof normalizedItem === 'string' && typeof itemGetter === 'function') {
+        const lookedUp = itemGetter(normalizedItem);
+        normalizedItem = lookedUp?.exists ? lookedUp : { name: normalizedItem, id: normalizeAbilityName(normalizedItem) };
+      } else if (normalizedItem && typeof normalizedItem === 'object' && !normalizedItem.id && normalizedItem.name) {
+        normalizedItem = { ...normalizedItem, id: normalizeAbilityName(normalizedItem.name) };
+      }
       for (const stat of ['atk', 'def', 'spa', 'spd', 'spe']) {
         const stage = normalizedStages[stat] ?? 0;
         const stagedVal = Math.max(1, Math.floor((stats[stat] ?? 0) * (stage >= 0 ? (2 + stage) / 2 : 2 / (2 - stage))));
@@ -120,7 +128,7 @@ const PokemonSelector = forwardRef(({
         originalPokemon: initialPokemon,
         transformed: isTransformActive,
         ability: effectiveAbility,
-        item: state.selectedItem ? Dex.items.get(state.selectedItem.id ?? state.selectedItem) : null,
+        item: normalizedItem,
         moves: moveState.selectedMoves,
         stages: normalizedStages,
         stats: finalStats,
