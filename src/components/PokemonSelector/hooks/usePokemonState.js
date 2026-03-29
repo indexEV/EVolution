@@ -6,7 +6,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Dex } from '@pkmn/dex';
 import { Generations } from '@pkmn/data';
-import { getAllLearnableIds } from '../utils/learnsets';
 import { normalizeAbilityName } from '../utils/display';
 
 export function usePokemonState(initialPokemon = null, onStateChange = null) {
