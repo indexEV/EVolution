@@ -10,8 +10,9 @@ import { useMoveFiltering } from './PokemonSelector/hooks/useMoveFiltering';
 import PokemonForm from './PokemonSelector/components/PokemonForm';
 import StatsForm from './PokemonSelector/components/StatsForm';
 import MoveSelector from './PokemonSelector/components/MoveSelector';
-import { normalizeAbilityName } from '../utils/display';
-import { getModifierPills, applyModifiers, computeEffectiveStages } from '../utils/modifiers';
+import { normalizeAbilityName } from './PokemonSelector/utils/display';
+import { getModifierPills, applyModifiers, computeEffectiveStages } from './PokemonSelector/utils/modifiers';
+import { NATURES } from './PokemonSelector/utils/pokemonConstants';
 import '../styles/PokemonSelector.css';
 
 const PokemonSelector = forwardRef(({
