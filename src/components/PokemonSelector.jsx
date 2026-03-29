@@ -54,10 +54,17 @@ const PokemonSelector = forwardRef(({
       stackCounts: state.stackCounts,
     }),
     setPokemon: (poke) => {
-      // Handle pokemon selection
+      if (!poke) {
+        state.resetState();
+        if (onSelect) onSelect(null);
+        return;
+      }
+
+      state.setSearchTerm(poke.name ?? '');
+      if (onSelect) onSelect(poke);
     },
     resetState: state.resetState,
-  }), [initialPokemon, state, moveState]);
+  }), [initialPokemon, moveState, onSelect, state]);
 
   // Handle pokemon selection
   const handleSelectPokemon = (pokemon) => {
@@ -92,7 +99,7 @@ const PokemonSelector = forwardRef(({
         const ev = state.userEvs[stat] ?? 0;
 
         if (stat === 'hp') {
-          calculated[stat] = Math.floor((2 * base + iv + ev / 4) * level / 100 + level + 5);
+          calculated[stat] = Math.floor((2 * base + iv + ev / 4) * level / 100 + level + 10);
         } else {
           let val = Math.floor((2 * base + iv + ev / 4) * level / 100 + 5);
           
@@ -116,7 +123,7 @@ const PokemonSelector = forwardRef(({
   React.useEffect(() => {
     const stats = calculateStats();
     state.setCalculatedStats(stats);
-  }, [calculateStats, state]);
+  }, [calculateStats, state.setCalculatedStats]);
 
   // Handle outside clicks to close dropdowns
   React.useEffect(() => {
@@ -128,7 +135,7 @@ const PokemonSelector = forwardRef(({
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [state]);
+  }, [state.setNatureOpen, state.setSearchOpen]);
 
   return (
     <div className="pokemon-selector-root" style={{ padding: 16, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.4)' }}>
