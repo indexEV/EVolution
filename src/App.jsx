@@ -27,6 +27,37 @@ class ErrorBoundary extends Component {
   }
 }
 
+const STEP_TITLES = [
+  'Select Pokemon',
+  'Configure EVs & IVs',
+  'Items, Status & HP',
+  'Move Selection',
+  'Field Conditions',
+  'Constraints',
+  'Results',
+];
+
+const STEP_COLORS = [
+  '#8f74ff',
+  '#976fff',
+  '#a06cff',
+  '#a96bff',
+  '#b66cf8',
+  '#c56eed',
+  '#d775e5',
+];
+
+const STEP_COUNT = STEP_TITLES.length;
+
+const hexToRgb = (hex) => {
+  const normalized = hex.replace('#', '');
+  const value = normalized.length === 3
+    ? normalized.split('').map(ch => ch + ch).join('')
+    : normalized;
+  const int = Number.parseInt(value, 16);
+  return `${(int >> 16) & 255} ${(int >> 8) & 255} ${int & 255}`;
+};
+
 
 function SwapButtonPortal({ onSwap, disabled, pairRef, step }) {
   const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -91,6 +122,7 @@ function CopySetBanner({ pokemon, fullState, level, isEnemy }) {
     <LiquidGlass
       borderRadius={12} bezelWidth={16} scale={45} blur={18}
       saturation={1.6} brightness={0.95}
+      hoverScaleMultiplier={1}
       background={copied ? 'rgba(40,100,30,0.38)' : 'rgba(10,10,16,0.45)'}
       hoverBackground={copied ? 'rgba(40,100,30,0.38)' : 'rgba(20,80,20,0.52)'}
       hoverBrightness={1.06}
@@ -307,14 +339,18 @@ export default function App() {
   const [userPokemon, setUserPokemon] = useState(null);
   const [enemyPokemon, setEnemyPokemon] = useState(null);
   const [step, setStep] = useState(1);
+  const [maxUnlockedStep, setMaxUnlockedStep] = useState(1);
   const [userError, setUserError] = useState(null);
   const [enemyError, setEnemyError] = useState(null);
   const [userState, setUserState] = useState(null);
   const [enemyState, setEnemyState] = useState(null);
   const [fieldConditions, setFieldConditions] = useState(null);
   const [constraints, setConstraints] = useState([]);
+  const [savedThreats, setSavedThreats] = useState([]);
   const [userFullState, setUserFullState] = useState(null);
   const [enemyFullState, setEnemyFullState] = useState(null);
+  const [step7CalcToken, setStep7CalcToken] = useState(0);
+  const [step7IsCalculating, setStep7IsCalculating] = useState(false);
 
   // Re-snapshot whenever opponent state changes (needed for live Imposter/Transform copying)
   const handleUserStateChange = (s) => {
@@ -351,6 +387,19 @@ export default function App() {
     }
   }, [enemyError]);
 
+  useEffect(() => {
+    if (step !== STEP_COUNT) {
+      setStep7CalcToken(0);
+      setStep7IsCalculating(false);
+    }
+  }, [step]);
+
+  useEffect(() => {
+    if (step === 1 && (!userPokemon || !enemyPokemon)) {
+      setMaxUnlockedStep(1);
+    }
+  }, [step, userPokemon, enemyPokemon]);
+
   const handleContinue = () => {
     if (step === 1) {
       if (!userPokemon || !enemyPokemon) return;
@@ -366,10 +415,13 @@ export default function App() {
         userSelectorRef.current?.applyEntryEffects(userInteractions);
         enemySelectorRef.current?.applyEntryEffects(enemyInteractions);
 
+        setMaxUnlockedStep(prev => Math.max(prev, 2));
         setStep(2);
       }
-    } else {
-      setStep(s => s + 1);
+    } else if (step < STEP_COUNT) {
+      const nextStep = step + 1;
+      setMaxUnlockedStep(prev => Math.max(prev, nextStep));
+      setStep(nextStep);
     }
   };
 
@@ -396,7 +448,45 @@ export default function App() {
     if (!result.success) { setEnemyPasteError(result.error); return; }
   };
 
-  const canContinue = step === 1 ? (!!userPokemon && !!enemyPokemon) : true;
+  const step4HasMove =
+    [userFullState, enemyFullState].some((state) =>
+      (state?.moves ?? []).some((move) => !!move?.name)
+    );
+
+  const canContinue =
+    step === 1
+      ? (!!userPokemon && !!enemyPokemon)
+      : step === 4
+        ? step4HasMove
+      : step === 6
+        ? constraints.length > 0
+        : true;
+  const isCalculateStep = step === STEP_COUNT;
+  const canCalculate =
+    !!userPokemon &&
+    !!userFullState &&
+    !!enemyPokemon &&
+    !!enemyFullState &&
+    constraints.length > 0;
+  const navButtonEnabled = isCalculateStep ? (canCalculate && !step7IsCalculating) : canContinue;
+  const triggerStep7Calculation = () => {
+    if (!canCalculate || step7IsCalculating) return;
+    setStep7IsCalculating(true);
+    setStep7CalcToken((n) => n + 1);
+  };
+  const handlePrimaryNavAction = () => {
+    if (isCalculateStep) {
+      if (!navButtonEnabled) return;
+      triggerStep7Calculation();
+      return;
+    }
+    handleContinue();
+  };
+
+  const handleStepJump = (targetStep) => {
+    if (targetStep < 1 || targetStep > maxUnlockedStep) return;
+    setStep(targetStep);
+  };
 
   const handleSwap = () => {
     const uState = userSelectorRef.current?.getFullState();
@@ -418,13 +508,7 @@ export default function App() {
   const [userLevel, setUserLevel] = useState(100);
   const [enemyLevel, setEnemyLevel] = useState(100);
 
-  const stepTitle = step === 1 ? 'Select Pokemon'
-    : step === 2 ? 'Configure EVs & IVs'
-    : step === 3 ? 'Items, Status & HP'
-    : step === 4 ? 'Move Selection'
-    : step === 5 ? 'Field Conditions'
-    : step === 6 ? 'Constraints'
-    : 'Results';
+  const stepTitle = STEP_TITLES[step - 1];
 
   return (
     <ErrorBoundary>
@@ -479,27 +563,124 @@ export default function App() {
       </div>
 
       <main className="app-main">
-        <section className="input-section">
+        <section className={`input-section step-${step}`}>
 
           <div className="step-bar">
             <h2>Step {step}: {stepTitle}</h2>
-            <div className="step-bar-actions">
+            <div className="step-navigator">
+              <div className="step-circle-row">
+                {STEP_TITLES.map((_, index) => {
+                  const stepNumber = index + 1;
+                  const unlocked = stepNumber <= maxUnlockedStep;
+                  const current = stepNumber === step;
+                  const stepRgb = hexToRgb(STEP_COLORS[index]);
+                  const circleBackground = unlocked
+                    ? `rgba(${stepRgb.replace(/ /g, ',')}, ${current ? 0.2 : 0.12})`
+                    : 'rgba(10,10,16,0.22)';
+                  const circleHoverBackground = unlocked
+                    ? `rgba(${stepRgb.replace(/ /g, ',')}, ${current ? 0.24 : 0.16})`
+                    : 'rgba(10,10,16,0.22)';
+
+                  return (
+                    <div
+                      key={stepNumber}
+                      className={`step-circle-shell ${current ? 'current' : ''} ${unlocked ? 'unlocked' : 'locked'}`}
+                    >
+                      <LiquidGlass
+                        borderRadius={999}
+                        bezelWidth={16}
+                        scale={44}
+                        hoverScaleMultiplier={1}
+                        blur={18}
+                        saturation={1.7}
+                        brightness={0.94}
+                        background={circleBackground}
+                        hoverBackground={circleHoverBackground}
+                        hoverBrightness={1.02}
+                        style={{ display: 'inline-flex', '--step-color-rgb': stepRgb }}
+                      >
+                        <button
+                          className={`step-circle-btn ${current ? 'current' : ''} ${unlocked ? 'unlocked' : 'locked'}`}
+                          onClick={() => handleStepJump(stepNumber)}
+                          disabled={!unlocked}
+                          style={{ '--step-color': STEP_COLORS[index], '--step-color-rgb': stepRgb }}
+                          title={`Step ${stepNumber}: ${STEP_TITLES[index]}`}
+                        >
+                          {stepNumber}
+                        </button>
+                      </LiquidGlass>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <LiquidGlass
+                borderRadius={999}
+                bezelWidth={16}
+                scale={isCalculateStep ? 58 : 46}
+                hoverScaleMultiplier={1}
+                blur={18}
+                saturation={1.9}
+                brightness={0.94}
+                background={
+                  isCalculateStep
+                    ? 'rgba(110,24,96,0.26)'
+                    : canContinue
+                      ? 'rgba(62,28,96,0.24)'
+                      : 'rgba(12,12,18,0.28)'
+                }
+                hoverBackground={
+                  isCalculateStep
+                    ? 'rgba(134,36,118,0.34)'
+                    : canContinue
+                      ? 'rgba(84,36,126,0.32)'
+                      : 'rgba(12,12,18,0.28)'
+                }
+                hoverBrightness={1.03}
+                style={{ display: 'inline-flex', opacity: navButtonEnabled ? 1 : 0.52 }}
+              >
+                <button
+                  className={`step-arrow-btn ${isCalculateStep ? 'calculate' : ''} ${navButtonEnabled ? 'active' : 'disabled'}`}
+                  onClick={handlePrimaryNavAction}
+                  disabled={!navButtonEnabled}
+                  title={
+                    isCalculateStep
+                      ? (step7IsCalculating ? 'Calculating...' : 'Calculate')
+                      : step === STEP_COUNT - 1
+                        ? 'Go to results'
+                        : 'Next step'
+                  }
+                >
+                  {isCalculateStep ? (
+                    <>
+                      <span className="step-calc-icon" aria-hidden="true">ϟ</span>
+                      <span className="step-calc-label">Calculate</span>
+                    </>
+                  ) : (
+                    <svg className="step-arrow-icon" viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="M7 4.75 12.25 10 7 15.25" />
+                    </svg>
+                  )}
+                </button>
+              </LiquidGlass>
+            </div>
+            {false && <div className="step-bar-actions">
               {step >= 2 && (
-                <LiquidGlass borderRadius={14} bezelWidth={18} scale={55} blur={20} saturation={1.6} brightness={0.92} background="rgba(8,8,12,0.55)" hoverBackground="rgba(40,40,55,0.62)" hoverBrightness={1.05} style={{display:'inline-flex'}}>
+                <LiquidGlass borderRadius={14} bezelWidth={18} scale={55} hoverScaleMultiplier={1} blur={20} saturation={1.6} brightness={0.92} background="rgba(8,8,12,0.55)" hoverBackground="rgba(40,40,55,0.62)" hoverBrightness={1.05} style={{display:'inline-flex'}}>
                   <button className="back-btn-inner" onClick={() => setStep(s => s - 1)}>← Back</button>
                 </LiquidGlass>
               )}
               {step < 6 && (
-                <LiquidGlass borderRadius={14} bezelWidth={18} scale={55} blur={20} saturation={1.8} brightness={0.94} background="rgba(8,8,12,0.55)" hoverBackground="rgba(80,20,120,0.52)" hoverBrightness={1.08} style={{display:'inline-flex', opacity: !canContinue ? 0.35 : 1}}>
+                <LiquidGlass borderRadius={14} bezelWidth={18} scale={55} hoverScaleMultiplier={1} blur={20} saturation={1.8} brightness={0.94} background="rgba(8,8,12,0.55)" hoverBackground="rgba(80,20,120,0.52)" hoverBrightness={1.08} style={{display:'inline-flex', opacity: !canContinue ? 0.35 : 1}}>
                   <button className={`continue-btn-inner ${!canContinue ? 'disabled' : ''}`} onClick={handleContinue} disabled={!canContinue}>Continue →</button>
                 </LiquidGlass>
               )}
               {step === 6 && (
-                <LiquidGlass borderRadius={14} bezelWidth={18} scale={55} blur={20} saturation={2.2} brightness={0.92} background="rgba(100,6,60,0.38)" hoverBackground="rgba(180,10,100,0.55)" hoverBrightness={1.1} style={{display:'inline-flex'}}>
+                <LiquidGlass borderRadius={14} bezelWidth={18} scale={55} hoverScaleMultiplier={1} blur={20} saturation={2.2} brightness={0.92} background="rgba(100,6,60,0.38)" hoverBackground="rgba(180,10,100,0.55)" hoverBrightness={1.1} style={{display:'inline-flex'}}>
                   <button className="calculate-btn-inner" onClick={handleContinue}>⚡ Calculate</button>
                 </LiquidGlass>
               )}
-            </div>
+            </div>}
           </div>
 
           <div className="pokemon-pair-wrapper">
@@ -525,25 +706,26 @@ export default function App() {
                   fieldConditions={fieldConditions}
                 />
                 {step === 1 && !userPokemon && (
-                  <LiquidGlass
-                    borderRadius={16} bezelWidth={20} scale={60} blur={28}
-                    saturation={1.8} brightness={0.95} background="rgba(10,10,16,0.52)"
-                    style={{ marginTop: 0 }}
-                  >
-                    <div className="paste-section" style={{ padding: '4px 2px 2px' }}>
-                      <textarea
-                        className={`paste-input ${userPasteError ? 'error' : ''}`}
-                        placeholder="OR paste your Showdown set here..."
-                        value={userPasteText}
-                        onChange={e => handleUserPaste(e.target.value)}
-                        rows={12}
-                        spellCheck={false}
-                        style={{ background: 'transparent', border: 'none', boxShadow: 'none', borderRadius: 14 }}
-                      />
+                    <LiquidGlass
+                      borderRadius={16} bezelWidth={20} scale={60} blur={28}
+                      saturation={1.8} brightness={0.95} background="rgba(10,10,16,0.52)"
+                      style={{ marginTop: 0 }}
+                    >
+                      <div className="paste-section">
+                        <div className={`paste-input-shell ${userPasteError ? 'error' : ''}`}>
+                          <textarea
+                            className="paste-input control-surface-input"
+                            placeholder="OR paste your Showdown set here..."
+                            value={userPasteText}
+                            onChange={e => handleUserPaste(e.target.value)}
+                            rows={12}
+                            spellCheck={false}
+                          />
+                        </div>
                       {userPasteError && <div className="paste-error">{userPasteError}</div>}
-                    </div>
-                  </LiquidGlass>
-                )}
+                      </div>
+                    </LiquidGlass>
+                  )}
               </div>
 
               {/* Right column: enemy card + paste */}
@@ -566,32 +748,33 @@ export default function App() {
                   fieldConditions={fieldConditions}
                 />
                 {step === 1 && !enemyPokemon && (
-                  <LiquidGlass
-                    borderRadius={16} bezelWidth={20} scale={60} blur={28}
-                    saturation={1.8} brightness={0.95} background="rgba(10,10,16,0.52)"
-                    style={{ marginTop: 0 }}
-                  >
-                    <div className="paste-section" style={{ padding: '4px 2px 2px' }}>
-                      <textarea
-                        className={`paste-input ${enemyPasteError ? 'error' : ''}`}
-                        placeholder="OR paste your Showdown set here..."
-                        value={enemyPasteText}
-                        onChange={e => handleEnemyPaste(e.target.value)}
-                        rows={12}
-                        spellCheck={false}
-                        style={{ background: 'transparent', border: 'none', boxShadow: 'none', borderRadius: 14 }}
-                      />
+                    <LiquidGlass
+                      borderRadius={16} bezelWidth={20} scale={60} blur={28}
+                      saturation={1.8} brightness={0.95} background="rgba(10,10,16,0.52)"
+                      style={{ marginTop: 0 }}
+                    >
+                      <div className="paste-section">
+                        <div className={`paste-input-shell ${enemyPasteError ? 'error' : ''}`}>
+                          <textarea
+                            className="paste-input control-surface-input"
+                            placeholder="OR paste your Showdown set here..."
+                            value={enemyPasteText}
+                            onChange={e => handleEnemyPaste(e.target.value)}
+                            rows={12}
+                            spellCheck={false}
+                          />
+                        </div>
                       {enemyPasteError && <div className="paste-error">{enemyPasteError}</div>}
-                    </div>
-                  </LiquidGlass>
-                )}
+                      </div>
+                    </LiquidGlass>
+                  )}
               </div>
 
             </div>
             {userPokemon && enemyPokemon && (
               <SwapButtonPortal
                 onSwap={handleSwap}
-                disabled={false}
+                disabled={step7IsCalculating}
                 pairRef={pairRef}
                 step={step}
               />
@@ -615,6 +798,8 @@ export default function App() {
             <Constraints
               constraints={constraints}
               onChange={setConstraints}
+              savedThreats={savedThreats}
+              onSavedThreatsChange={setSavedThreats}
               userPokemon={userPokemon}
               enemyPokemon={enemyPokemon}
               userFullState={userFullState}
@@ -626,10 +811,17 @@ export default function App() {
             <Results
               userPokemon={userPokemon}
               userFullState={userFullState}
+              userLevel={userLevel}
               enemyPokemon={enemyPokemon}
               enemyFullState={enemyFullState}
+              enemyLevel={enemyLevel}
               constraints={constraints}
               fieldConditions={fieldConditions}
+              calculateToken={step7CalcToken}
+              onCalculatingChange={setStep7IsCalculating}
+              canCalculate={canCalculate}
+              isCalculating={step7IsCalculating}
+              onRequestCalculate={triggerStep7Calculation}
             />
           )}
 

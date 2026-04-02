@@ -5,12 +5,13 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  overflow: visible;
 }
 
 /* ── Empty state ── */
 .constraints-empty {
   text-align: center;
-  padding: 40px 20px;
+  padding: 6px 20px 2px;
   color: #555;
 }
 
@@ -56,51 +57,220 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow: visible;
 }
 
 /* ── Individual card ── */
 .constraint-card {
-  background: var(--c-accent, #0a0a0a);
-  border: 1px solid #2a2a2a;
-  border-left: 3px solid var(--c-color, #444);
-  border-radius: 12px;
-  padding: 16px 20px;
+  background: rgba(12,12,16,0.28);
+  backdrop-filter: blur(18px) saturate(170%) brightness(0.96);
+  -webkit-backdrop-filter: blur(18px) saturate(170%) brightness(0.96);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-top-color: rgba(255,255,255,0.18);
+  border-radius: 20px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.1), 0 8px 32px rgba(0,0,0,0.4);
+  overflow: visible;
+  background-clip: padding-box;
+  contain: none;
+  transform: none;
+  backface-visibility: visible;
+}
+
+.constraints-entry-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 18px 20px;
+  background: rgba(10,10,14,0.54);
+  backdrop-filter: blur(18px) saturate(165%) brightness(0.97);
+  -webkit-backdrop-filter: blur(18px) saturate(165%) brightness(0.97);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 20px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.34);
+}
+
+.constraints-entry-surface {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  min-height: 100%;
+  padding: 0;
+  border-radius: 0;
+  overflow: visible;
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+  background-clip: border-box;
+}
+
+.constraints-entry-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+  position: relative;
+  z-index: 1;
+}
+
+.constraints-entry-type {
+  position: relative;
+  width: 112px;
+  min-height: 164px;
+}
+
+.constraints-entry-btn {
+  width: 100%;
+  min-height: 164px;
+  max-width: none;
+  padding: 10px 14px 84px;
+  position: relative;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.constraints-entry-btn .constraint-type-img {
+  width: 48px;
+  height: 48px;
+  margin-top: 4px;
+}
+
+.constraints-entry-btn .constraint-type-label {
+  line-height: 1.2;
+}
+
+.constraints-entry-add {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--add-color) 62%, rgba(255,255,255,0.12));
+  background: rgba(10, 10, 14, 0.72);
+  color: var(--add-color);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.08), 0 6px 18px rgba(0,0,0,0.24);
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+  z-index: 2;
+}
+
+.constraints-entry-add.enabled:hover {
+  background: rgba(18, 18, 26, 0.88);
+  box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.1), 0 0 18px color-mix(in srgb, var(--add-color) 24%, transparent);
+}
+
+.constraints-entry-add.disabled,
+.constraints-entry-add:disabled {
+  border-color: rgba(255,255,255,0.08);
+  background: rgba(10, 10, 14, 0.46);
+  color: rgba(255,255,255,0.22);
+  box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.04), 0 4px 12px rgba(0,0,0,0.18);
+  cursor: default;
+  pointer-events: none;
+}
+
+.constraints-entry-help {
+  margin: 14px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: rgba(255,255,255,0.38);
+  text-align: center;
+  position: relative;
+  z-index: 1;
 }
 
 /* ── Type selector row ── */
 .constraint-type-row {
+  display: none;
+}
+
+.constraint-card-inner {
+  background: rgba(8,8,12,0.62);
+  backdrop-filter: blur(40px) saturate(210%) brightness(0.93);
+  -webkit-backdrop-filter: blur(40px) saturate(210%) brightness(0.93);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-top-color: rgba(255,255,255,0.15);
+  border-radius: 18px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.09), 0 8px 28px rgba(0,0,0,0.5);
+  overflow: visible;
+  background-clip: padding-box;
+  contain: none;
+  transform: none;
+  backface-visibility: visible;
+}
+
+.constraint-card-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+}
+
+.constraint-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.constraint-card-title .constraint-type-img {
+  opacity: 1;
+  filter: none;
+}
+
+.constraint-card-title .constraint-type-label {
+  color: var(--btn-color, #fff);
 }
 
 .constraint-type-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 5px;
   padding: 10px 16px;
-  background: #111;
-  border: 1px solid #2a2a2a;
-  border-radius: 10px;
+  background: rgba(8,8,12,0.55);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-top-color: rgba(255,255,255,0.12);
+  border-radius: 14px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
   flex: 1;
   max-width: 110px;
 }
 
 .constraint-type-btn:hover {
-  border-color: #444;
-  background: #1a1a1a;
+  border-color: rgba(255,255,255,0.12);
+  border-top-color: rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.08);
 }
 
 .constraint-type-btn.active {
-  background: #1a1a1a;
+  background: rgba(18,18,24,0.78);
   border-color: var(--btn-color, #fff);
-  box-shadow: 0 0 12px rgba(255,255,255,0.05);
+  border-top-color: var(--btn-color, #fff);
+  box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.12), 0 0 14px rgba(0,0,0,0.35);
 }
 
 .constraint-type-img {
@@ -122,7 +292,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #444;
+  color: rgba(255,255,255,0.28);
   transition: color 0.15s;
 }
 
@@ -366,4 +536,239 @@
   color: #888;
   background: #0f0f0f;
 
+}
+
+.constraint-sentence-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.constraint-sentence {
+  margin: 0;
+  color: rgba(255,255,255,0.9);
+  font-size: 15px;
+  line-height: 1.95;
+}
+
+.constraint-assumptions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.constraint-assumption-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.constraint-assumption-label {
+  width: 150px;
+  flex-shrink: 0;
+  padding-top: 9px;
+  color: rgba(255,255,255,0.34);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.constraint-assumption-content {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 36px;
+}
+
+.constraint-context-line {
+  margin: 0;
+  color: rgba(255,255,255,0.48);
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.constraint-context-note {
+  color: rgba(255,255,255,0.38);
+}
+
+.constraint-inline-select,
+.constraint-inline-value,
+.constraint-inline-toggle,
+.constraint-field-tags {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.constraint-inline-select {
+  position: relative;
+  margin: 0 4px;
+}
+
+.constraint-inline-select.open {
+  z-index: 50;
+}
+
+.constraint-inline-trigger,
+.constraint-inline-value,
+.constraint-inline-toggle,
+.constraint-field-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-top-color: rgba(255,255,255,0.16);
+  background: rgba(12,12,18,0.78);
+  backdrop-filter: blur(16px) saturate(155%);
+  -webkit-backdrop-filter: blur(16px) saturate(155%);
+  box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.08), 0 8px 22px rgba(0,0,0,0.2);
+  color: rgba(255,255,255,0.86);
+  font-size: 12px;
+  font-weight: 600;
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.constraint-inline-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.constraint-inline-trigger:hover:not(:disabled),
+.constraint-inline-toggle:hover {
+  border-color: rgba(255,255,255,0.16);
+  background: rgba(18,18,26,0.9);
+}
+
+.constraint-inline-trigger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.constraint-inline-trigger-label,
+.constraint-inline-option-label,
+.constraint-inline-threat {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.constraint-inline-caret {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-right: 1.5px solid var(--c-color, rgba(255,255,255,0.65));
+  border-bottom: 1.5px solid var(--c-color, rgba(255,255,255,0.65));
+  transform: rotate(45deg) translateY(-1px);
+  opacity: 0.9;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+
+.constraint-inline-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: max(100%, 180px);
+  max-width: min(320px, 72vw);
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 8px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-top-color: rgba(255,255,255,0.18);
+  background: rgba(8,8,14,0.94);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 18px 42px rgba(0,0,0,0.45);
+  z-index: 120;
+  scrollbar-width: none;
+}
+
+.constraint-inline-menu::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.constraint-inline-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: rgba(255,255,255,0.86);
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.constraint-inline-option:hover,
+.constraint-inline-option.active {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.08);
+}
+
+.constraint-inline-value {
+  margin: 0 4px;
+  border-color: rgba(255,255,255,0.1);
+}
+
+.constraint-inline-toggle {
+  margin: 0 4px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.constraint-inline-toggle.active,
+.constraint-inline-select.open .constraint-inline-trigger {
+  border-color: var(--c-color, rgba(255,255,255,0.36));
+  color: var(--c-color, #fff);
+  box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.08), 0 0 0 1px rgba(0,0,0,0.12), 0 0 18px var(--c-accent, rgba(255,255,255,0.08));
+}
+
+.constraint-field-tags {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: 0;
+}
+
+.constraint-field-tag {
+  color: rgba(255,255,255,0.72);
+  background: rgba(14,14,20,0.72);
+  border-color: rgba(255,255,255,0.08);
+}
+
+.constraint-inline-option-note {
+  color: rgba(255,255,255,0.34);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+@media (max-width: 720px) {
+  .constraint-assumption-row {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .constraint-assumption-label {
+    width: auto;
+    padding-top: 0;
+  }
 }

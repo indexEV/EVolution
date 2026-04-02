@@ -1,92 +1,150 @@
-
-/* ── Threat Modal (step 6: custom threat pokemon wizard) ─── */
-
 .threat-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.8);
-  z-index: 1000;
+  background: rgba(4, 4, 8, 0.68);
+  z-index: 100040;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.threat-editor-inline-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 100041;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
-  backdrop-filter: blur(3px);
+  padding: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  width: 100%;
+  box-sizing: border-box;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.threat-editor-inline-shell::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .threat-modal {
-  background: #0d0d0d;
-  border: 1px solid #333;
-  border-radius: 16px;
   width: 100%;
-  max-width: 860px;
-  max-height: 90vh;
+  max-width: 1120px;
+  max-height: calc(100vh - 48px);
+  background: rgba(12, 12, 18, 0.32);
+  backdrop-filter: blur(22px) saturate(170%) brightness(0.97);
+  -webkit-backdrop-filter: blur(22px) saturate(170%) brightness(0.97);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-top-color: rgba(255, 255, 255, 0.18);
+  border-radius: 22px;
+  padding: 18px;
   display: flex;
   flex-direction: column;
+  gap: 14px;
   overflow: hidden;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.08),
+    0 18px 48px rgba(0, 0, 0, 0.34);
 }
 
 .threat-modal-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 18px 24px;
-  border-bottom: 1px solid #1e1e1e;
-  flex-shrink: 0;
+  gap: 16px;
+}
+
+.threat-modal-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.threat-modal-kicker {
+  display: inline-flex;
+  align-self: flex-start;
+  min-height: 26px;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top-color: rgba(255, 255, 255, 0.16);
+  background: rgba(10, 10, 16, 0.58);
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .threat-modal-step-info {
   display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.threat-modal-step-num {
-  font-size: 10px;
-  font-weight: 700;
-  color: #555;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
-  padding: 3px 9px;
-  border-radius: 6px;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
 }
 
 .threat-modal-step-title {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
-  color: #fff;
+  color: rgba(255, 255, 255, 0.94);
+}
+
+.threat-modal-step-subtitle {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.44);
+  line-height: 1.5;
 }
 
 .threat-modal-close {
-  background: none;
-  border: 1px solid #2a2a2a;
-  color: #555;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top-color: rgba(255, 255, 255, 0.16);
+  background: rgba(10, 10, 16, 0.62);
+  color: rgba(255, 255, 255, 0.42);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s;
+  transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
   flex-shrink: 0;
 }
 
 .threat-modal-close:hover {
-  border-color: #555;
-  color: #aaa;
-  background: #1a1a1a;
+  border-color: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(16, 16, 24, 0.76);
+}
+
+.threat-modal-content-shell {
+  background: rgba(8, 8, 12, 0.62);
+  backdrop-filter: blur(28px) saturate(180%) brightness(0.94);
+  -webkit-backdrop-filter: blur(28px) saturate(180%) brightness(0.94);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-top-color: rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.06),
+    0 10px 28px rgba(0, 0, 0, 0.26);
 }
 
 .threat-modal-body {
-  flex: 1;
+  padding: 18px;
   overflow-y: auto;
-  padding: 20px 24px;
-  scrollbar-width: thin;
-  scrollbar-color: #333 transparent;
+  max-height: calc(100vh - 220px);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.threat-modal-body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .threat-modal-body .pokemon-selector {
@@ -94,24 +152,67 @@
 }
 
 .threat-modal-footer {
-  padding: 16px 24px;
-  border-top: 1px solid #1e1e1e;
   display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-shrink: 0;
-  background: #0a0a0a;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 2px 8px;
+  margin-top: 2px;
+}
+
+.threat-modal-footer-spacer {
+  flex: 1;
+}
+
+.threat-modal-action {
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top-color: rgba(255, 255, 255, 0.16);
+  background: rgba(10, 10, 16, 0.58);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease, opacity 0.18s ease;
+}
+
+.threat-modal-action.secondary:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.94);
+  background: rgba(16, 16, 24, 0.74);
+}
+
+.threat-modal-action.primary {
+  color: #9de9b0;
+  background: rgba(18, 66, 30, 0.34);
+  border-color: rgba(110, 210, 132, 0.22);
+  border-top-color: rgba(150, 240, 172, 0.34);
+}
+
+.threat-modal-action.primary:hover:not(:disabled) {
+  color: #d9ffe3;
+  background: rgba(22, 88, 38, 0.44);
+}
+
+.threat-modal-action.disabled,
+.threat-modal-action:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
 }
 
 .threat-modal-error {
   margin-top: 8px;
-  color: #f66;
+  color: #f88;
   font-size: 12px;
   padding-left: 2px;
 }
 
 .threat-modal-paste {
-  margin-top: 16px;
+  margin-top: 18px;
 }
 
 .threat-modal-paste-label {
@@ -119,7 +220,37 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #444;
+  color: rgba(255, 255, 255, 0.34);
   margin-bottom: 8px;
+}
 
+@media (max-width: 720px) {
+  .threat-editor-inline-shell {
+    padding: 14px;
+    align-items: flex-start;
+  }
+
+  .threat-modal {
+    padding: 14px;
+    border-radius: 18px;
+    max-height: calc(100vh - 28px);
+  }
+
+  .threat-modal-body {
+    padding: 14px;
+    max-height: calc(100vh - 210px);
+  }
+
+  .threat-modal-footer {
+    flex-wrap: wrap;
+    padding-bottom: 4px;
+  }
+
+  .threat-modal-footer-spacer {
+    display: none;
+  }
+
+  .threat-modal-action {
+    flex: 1 1 180px;
+  }
 }

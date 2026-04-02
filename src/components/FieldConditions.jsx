@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import LiquidGlass from '../components/LiquidGlass';
 import '../styles/FieldConditions.css';
 
@@ -6,13 +6,13 @@ const normId = (s) => (s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 // Ability → auto field/side patches
 const WEATHER_ABILITIES = {
-  drought: 'sun', desolateland: 'harshSunshine',
+  drought: 'sun', desolateland: 'harshSunshine', orichalcumpulse: 'sun',
   drizzle: 'rain', primordialsea: 'heavyRain',
   sandstream: 'sand', snowwarning: 'snow',
   deltastream: 'strongWinds',
 };
 const TERRAIN_ABILITIES = {
-  electricsurge: 'electric', grassysurge: 'grassy',
+  electricsurge: 'electric', hadronengine: 'electric', grassysurge: 'grassy',
   mistysurge: 'misty', psychicsurge: 'psychic',
 };
 const SIDE_ABILITY_KEYS = {
@@ -93,6 +93,7 @@ function Pill({ label, active, onClick, color, desc }) {
   } : {};
   return (
     <button
+      type="button"
       className={`fc-pill ${active ? 'active' : ''}`}
       style={activeStyle}
       onClick={onClick}
@@ -114,6 +115,7 @@ function Toggle({ label, active, onClick, color, desc }) {
   } : {};
   return (
     <button
+      type="button"
       className={`fc-toggle ${active ? 'active' : ''}`}
       style={activeStyle}
       onClick={onClick}
@@ -154,7 +156,7 @@ function SidePanel({ title, side, onChange }) {
         <span className="fc-counter-label">Spikes</span>
         <div className="fc-counter-btns">
           {[0,1,2,3].map(n => (
-            <button key={n} className={`fc-counter-btn ${side.spikes === n ? 'active' : ''}`} onClick={() => set('spikes', n)}>
+            <button type="button" key={n} className={`fc-counter-btn ${side.spikes === n ? 'active' : ''}`} onClick={() => set('spikes', n)}>
               {n === 0 ? '✕' : n}
             </button>
           ))}
@@ -165,7 +167,7 @@ function SidePanel({ title, side, onChange }) {
         <span className="fc-counter-label">Toxic Spikes</span>
         <div className="fc-counter-btns">
           {[0,1,2].map(n => (
-            <button key={n} className={`fc-counter-btn ${side.toxicSpikes === n ? 'active' : ''}`} onClick={() => set('toxicSpikes', n)}>
+            <button type="button" key={n} className={`fc-counter-btn ${side.toxicSpikes === n ? 'active' : ''}`} onClick={() => set('toxicSpikes', n)}>
               {n === 0 ? '✕' : n}
             </button>
           ))}
@@ -191,28 +193,28 @@ export default function FieldConditions({ value, onChange, userFullState, enemyF
   const field    = value?.field    ?? DEFAULT_FIELD;
   const userSide = value?.userSide ?? DEFAULT_SIDE;
   const enemySide= value?.enemySide?? DEFAULT_SIDE;
+  const autoSeedRef = useRef(null);
 
   const setField    = (patch) => onChange({ field: { ...field, ...patch }, userSide, enemySide });
   const setUserSide = (s)     => onChange({ field, userSide: s, enemySide });
   const setEnemySide= (s)     => onChange({ field, userSide, enemySide: s });
+  const userAb = normId(userFullState?.ability ?? '');
+  const enemyAb = normId(enemyFullState?.ability ?? '');
+  const userSpe = userFullState?.calculatedStats?.spe ?? userFullState?.pokemon?.baseStats?.spe ?? 0;
+  const enemySpe = enemyFullState?.calculatedStats?.spe ?? enemyFullState?.pokemon?.baseStats?.spe ?? 0;
+  const autoSeedKey = `${userAb}|${enemyAb}|${userSpe}|${enemySpe}`;
 
   // Auto-apply ability-based field conditions when entering step 5
   useEffect(() => {
-    if (!userFullState && !enemyFullState) return;
-
-    // fullState.ability is stored as a plain string e.g. "Drought", not an object
-    const getAbId = (fs) => normId(fs?.ability ?? '');
-    const userAb  = getAbId(userFullState);
-    const enemyAb = getAbId(enemyFullState);
+    if (!userAb && !enemyAb) return;
+    if (autoSeedRef.current === autoSeedKey) return;
+    autoSeedRef.current = autoSeedKey;
 
     let fieldPatch = {};
     let userSidePatch = {};
     let enemySidePatch = {};
 
     // Speed determines who sets weather/terrain — faster pokemon wins
-    // calculatedStats.spe from fullState, or fall back to base speed
-    const userSpe  = userFullState?.calculatedStats?.spe  ?? userFullState?.pokemon?.baseStats?.spe  ?? 0;
-    const enemySpe = enemyFullState?.calculatedStats?.spe ?? enemyFullState?.pokemon?.baseStats?.spe ?? 0;
     const userFaster = userSpe >= enemySpe; // tie goes to user
 
     const userWeather  = WEATHER_ABILITIES[userAb];
@@ -255,7 +257,7 @@ export default function FieldConditions({ value, onChange, userFullState, enemyF
     });
   // Only run when fullStates arrive (entering step 5)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userFullState, enemyFullState]);
+  }, [autoSeedKey, enemyAb, enemySpe, userAb, userSpe]);
 
   const terrains = [
     { id: 'electric', label: 'Electric', color: '#f8d030' },

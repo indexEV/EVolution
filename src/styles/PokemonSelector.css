@@ -18,12 +18,14 @@
   position: relative;
 }
 
-.search-input {
+.search-input,
+.control-surface-input {
   width: 100%;
   padding: 12px;
   border-radius: 12px;
   color: #fff;
   font-size: 16px;
+  font-family: inherit;
   outline: none;
   box-sizing: border-box;
   transition: all 0.2s;
@@ -34,7 +36,13 @@
   border-top-color: rgba(255,255,255,0.2);
   box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.13);
 }
-.search-input:focus {
+.search-input::placeholder,
+.control-surface-input::placeholder {
+  color: rgba(255,255,255,0.24);
+}
+
+.search-input:focus,
+.control-surface-input:focus {
   background: rgba(255,255,255,0.1);
   border-top-color: rgba(255,255,255,0.3);
 }
@@ -395,16 +403,16 @@
 .collapsed-moves {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 6px;
   /* Same glass as pokemon image pedestal */
-  background: rgba(255,255,255,0.04);
-  backdrop-filter: blur(16px) saturate(160%) brightness(0.93);
-  -webkit-backdrop-filter: blur(16px) saturate(160%) brightness(0.93);
-  border: 1px solid rgba(255,255,255,0.05);
-  border-top-color: rgba(255,255,255,0.15);
+  background: rgba(10,10,16,0.74);
+  backdrop-filter: blur(22px) saturate(170%) brightness(0.94);
+  -webkit-backdrop-filter: blur(22px) saturate(170%) brightness(0.94);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-top-color: rgba(255,255,255,0.16);
   border-radius: 14px;
-  padding: 8px 12px;
-  box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.11), 0 4px 16px rgba(0,0,0,0.35);
+  padding: 10px 12px;
+  box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.11), 0 8px 22px rgba(0,0,0,0.38);
 }
 
 .collapsed-move-item {
@@ -412,6 +420,7 @@
   align-items: center;
   gap: 6px;
   font-size: 12px;
+  min-height: 22px;
 }
 
 .collapsed-move-dot {
@@ -422,15 +431,17 @@
 }
 
 .collapsed-move-name {
-  color: #ccc;
-  font-weight: 600;
+  color: #e6e2ff;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 10px rgba(255,255,255,0.08);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .collapsed-move-empty {
-  color: #444;
+  color: rgba(255,255,255,0.3);
   font-style: italic;
 }
 

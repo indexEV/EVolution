@@ -1,4 +1,9 @@
 import { useEffect, useRef, useId, useState } from 'react';
+import '../styles/glass-system.css';
+
+function clamp01(value) {
+  return Math.min(1, Math.max(0, value));
+}
 
 // ── Global cache: reuse displacement maps with same dimensions/params ──────────
 const _dispMapCache = new Map();
@@ -128,6 +133,7 @@ export default function LiquidGlass({
   borderRadius   = 20,
   bezelWidth     = 28,
   scale          = 80,
+  hoverScaleMultiplier = 1,
   ior            = 1.5,
   blur           = 24,
   saturation     = 1.9,
@@ -135,11 +141,13 @@ export default function LiquidGlass({
   background     = 'rgba(12, 12, 16, 0.45)',
   hoverBackground = null,
   hoverBrightness = null,
+  surface        = 'panel',
   style          = {},
   className      = '',
   ...rest
 }) {
   const [hovered, setHovered] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   
   // Tweened states for smooth lens magnification
   const [animatedScale, setAnimatedScale] = useState(scale);
@@ -147,15 +155,43 @@ export default function LiquidGlass({
   
   const uid         = useId().replace(/:/g, '');
   const filterId    = `lg-${uid}`;
-  const canvasRef   = useRef(null);
   const feImageRef  = useRef(null);
   const wrapperRef  = useRef(null);
-  const specularRef = useRef(null); // Ref for the moving hotspot
+
+  const applyLightMetrics = (wrapper, width, height) => {
+    const rimSize = Math.min(184, Math.max(58, Math.min(width, height) * 0.92));
+    wrapper.style.setProperty('--glass-rim-size', `${rimSize}px`);
+    wrapper.style.setProperty('--glass-interior-size', `${Math.min(280, Math.max(88, rimSize * 1.6))}px`);
+  };
+
+  const applyPointerVars = (wrapper, nx, ny, rimAlpha, interiorAlpha) => {
+    wrapper.style.setProperty('--glass-pointer-x', `${(nx * 100).toFixed(2)}%`);
+    wrapper.style.setProperty('--glass-pointer-y', `${(ny * 100).toFixed(2)}%`);
+    wrapper.style.setProperty('--glass-rim-alpha', rimAlpha.toFixed(3));
+    wrapper.style.setProperty('--glass-interior-alpha', interiorAlpha.toFixed(3));
+  };
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => setPrefersReducedMotion(media.matches);
+    sync();
+    if (media.addEventListener) {
+      media.addEventListener('change', sync);
+      return () => media.removeEventListener('change', sync);
+    }
+    media.addListener(sync);
+    return () => media.removeListener(sync);
+  }, []);
 
   // Lens Magnification Tween Animation
   useEffect(() => {
+    const targetScale = hovered ? scale * hoverScaleMultiplier : scale;
+    if (prefersReducedMotion) {
+      setAnimatedScale(targetScale);
+      return undefined;
+    }
+
     const startScale = animatedScale;
-    const targetScale = hovered ? scale * 1.12 : scale;
     const startTime = performance.now();
     let frameId;
     const animate = (time) => {
@@ -166,7 +202,7 @@ export default function LiquidGlass({
     };
     frameId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frameId);
-  }, [hovered, scale]);
+  }, [hovered, scale, hoverScaleMultiplier, prefersReducedMotion]);
 
   // Canvas Generation Observer
   useEffect(() => {
@@ -179,6 +215,7 @@ export default function LiquidGlass({
       roTimer = setTimeout(() => {
         const { offsetWidth: w, offsetHeight: h } = wrapper;
         if (!w || !h) return;
+        applyLightMetrics(wrapper, w, h);
         const url = getCachedDisplacementMap(w, h, borderRadius, bezelWidth, ior);
         if (feImageRef.current) {
           feImageRef.current.setAttribute('href', url);
@@ -192,24 +229,30 @@ export default function LiquidGlass({
     return () => ro.disconnect();
   }, [borderRadius, bezelWidth, ior]);
 
-  // Fast Mouse Tracking for Specular Highlight
   const handleMouseMove = (e) => {
-    if (!wrapperRef.current || !specularRef.current) return;
-    const rect = wrapperRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    
-    // Updates DOM directly to bypass React render cycle for 60fps tracking
-    specularRef.current.style.background = `radial-gradient(circle at ${x}% ${y}%, rgba(255,255,255,0.18) 0%, transparent 55%)`;
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+    const rect = wrapper.getBoundingClientRect();
+    const nx = clamp01((e.clientX - rect.left) / rect.width);
+    const ny = clamp01((e.clientY - rect.top) / rect.height);
+    const edgeBias = Math.max(Math.abs(nx - 0.5) * 2, Math.abs(ny - 0.5) * 2);
+    const edgeStrength = clamp01((edgeBias - 0.34) / 0.66);
+    const centerDist = clamp01(Math.hypot(nx - 0.5, ny - 0.5) / 0.52);
+    const centerBias = 1 - centerDist;
+    const rimAlpha = edgeStrength * edgeStrength * (3 - 2 * edgeStrength);
+    const interiorAlpha = 0.014 + centerBias * 0.05 + rimAlpha * 0.012;
+    applyPointerVars(wrapper, nx, ny, rimAlpha, interiorAlpha);
   };
 
   const handleMouseLeave = () => {
     setHovered(false);
-    if (specularRef.current) {
-      // Reset to generic top-down lighting when mouse leaves
-      specularRef.current.style.background = 'radial-gradient(circle at 50% -20%, rgba(255,255,255,0.12) 0%, transparent 60%)';
+    if (wrapperRef.current) {
+      applyPointerVars(wrapperRef.current, 0.5, 0.5, 0, 0);
     }
   };
+
+  const resolvedBackground = hovered && hoverBackground ? hoverBackground : background;
+  const resolvedBrightness = hovered && hoverBrightness ? hoverBrightness : brightness;
 
   return (
     <>
@@ -235,72 +278,43 @@ export default function LiquidGlass({
       <div
         ref={wrapperRef}
         className={`liquid-glass-wrap ${className}`}
+        data-glass-surface={surface}
+        data-glass-hovered={hovered ? 'true' : 'false'}
         style={{
+          '--glass-radius': `${borderRadius}px`,
+          '--glass-bg': resolvedBackground,
+          '--glass-fallback-bg': 'rgba(18, 20, 28, 0.92)',
+          '--glass-shadow-rest': '0 10px 28px rgba(0,0,0,0.28), 0 1px 0 rgba(255,255,255,0.035) inset, 0 -1px 0 rgba(255,255,255,0.02) inset',
+          '--glass-shadow-hover': '0 16px 38px rgba(0,0,0,0.36), 0 1px 0 rgba(255,255,255,0.05) inset, 0 -1px 0 rgba(255,255,255,0.025) inset',
+          '--glass-pointer-x': '50%',
+          '--glass-pointer-y': '50%',
+          '--glass-rim-alpha': 0,
+          '--glass-interior-alpha': 0,
           position: 'relative',
           borderRadius,
           overflow: 'visible',
-          background: hovered && hoverBackground ? hoverBackground : background,
-          backdropFilter: `url(#${filterId}) blur(${blur}px) saturate(${saturation}) brightness(${hovered && hoverBrightness ? hoverBrightness : brightness})`,
-          WebkitBackdropFilter: `blur(${blur}px) saturate(${saturation}) brightness(${brightness})`,
-          border:    '1px solid rgba(255,255,255,0.06)',
-          borderTop: '1px solid rgba(255,255,255,0.18)',
-          boxShadow: [
-            'inset 0 0.5px 0 rgba(255,255,255,0.14)',
-            hovered ? '0 8px 24px rgba(0,0,0,0.5)' : '0 4px 16px rgba(0,0,0,0.4)', // Slightly deeper shadow on hover
-          ].join(', '),
-          transition: 'background 0.3s ease, box-shadow 0.3s ease',
+          background: resolvedBackground,
+          backdropFilter: `url(#${filterId}) blur(${blur}px) saturate(${saturation}) brightness(${resolvedBrightness})`,
+          WebkitBackdropFilter: `blur(${blur}px) saturate(${saturation}) brightness(${resolvedBrightness})`,
+          transition: 'background 0.28s ease, box-shadow 0.28s ease, border-color 0.28s ease',
           ...style,
         }}
         onMouseEnter={() => setHovered(true)}
-        onMouseLeave={handleMouseLeave}
         onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
         {...rest}
       >
-        {/* Iridescent rim */}
-        <div style={{
-          position:     'absolute',
-          inset:        0,
-          borderRadius: 'inherit',
-          padding:      '1px',
-          background:   'conic-gradient(from 0deg, rgba(255,80,160,0.4), rgba(80,180,255,0.35), rgba(120,255,180,0.25), rgba(255,220,80,0.3), rgba(200,80,255,0.4), rgba(255,80,160,0.4))',
-          WebkitMask:   'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-          mask:         'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-          WebkitMaskComposite: 'xor',
-          maskComposite: 'exclude',
-          pointerEvents: 'none',
-          zIndex:        2,
-          opacity:       hovered ? 0.7 : 0.5, // Brighter rim on hover
-          transition:    'opacity 0.3s ease',
-          animation:     'lg-iridescent 7s linear infinite',
-        }}/>
-        
-        {/* Dynamic Specular Hotspot */}
+        <div className="liquid-glass-interior" />
+
         <div 
-          ref={specularRef}
-          style={{
-            position: 'absolute',
-            inset: 0,
-            borderRadius: 'inherit',
-            background: 'radial-gradient(circle at 50% -20%, rgba(255,255,255,0.12) 0%, transparent 60%)',
-            pointerEvents: 'none',
-            zIndex: 1,
-            transition: 'opacity 0.3s ease',
-            opacity: hovered ? 1 : 0.6,
-          }}
+          className="liquid-glass-specular"
         />
 
         {/* Content */}
-        <div style={{ position: 'relative', zIndex: 3 }}>
+        <div className="liquid-glass-content">
           {children}
         </div>
       </div>
-
-      <style>{`
-        @keyframes lg-iridescent {
-          from { filter: hue-rotate(0deg); }
-          to   { filter: hue-rotate(360deg); }
-        }
-      `}</style>
     </>
   );
 }
