@@ -170,8 +170,26 @@ function getAbilitySummary(fullState, fieldConditions, speedOnly = false) {
   if (ab === 'guts' && status) return 'Guts active';
   if (ab === 'quickfeet' && status) return 'Quick Feet active';
   if (ab === 'poisonheal' && ['psn', 'tox'].includes(status)) return 'Poison Heal';
-  if (ab === 'protosynthesis' && (weather === 'sun' || weather === 'harshSunshine' || itemId === 'boosterenergy')) return 'Protosynthesis';
-  if (ab === 'quarkdrive' && (terrain === 'electric' || itemId === 'boosterenergy')) return 'Quark Drive';
+  if (ab === 'protosynthesis') {
+    if (fullState?.boostedStat === 'atk') return 'Protosynthesis (Attack)';
+    if (fullState?.boostedStat === 'def') return 'Protosynthesis (Defense)';
+    if (fullState?.boostedStat === 'spa') return 'Protosynthesis (Sp. Atk)';
+    if (fullState?.boostedStat === 'spd') return 'Protosynthesis (Sp. Def)';
+    if (fullState?.boostedStat === 'spe') return 'Protosynthesis (Speed)';
+    if (fullState?.boostedStat === 'auto' && (weather === 'sun' || weather === 'harshSunshine' || itemId === 'boosterenergy')) {
+      return 'Protosynthesis';
+    }
+  }
+  if (ab === 'quarkdrive') {
+    if (fullState?.boostedStat === 'atk') return 'Quark Drive (Attack)';
+    if (fullState?.boostedStat === 'def') return 'Quark Drive (Defense)';
+    if (fullState?.boostedStat === 'spa') return 'Quark Drive (Sp. Atk)';
+    if (fullState?.boostedStat === 'spd') return 'Quark Drive (Sp. Def)';
+    if (fullState?.boostedStat === 'spe') return 'Quark Drive (Speed)';
+    if (fullState?.boostedStat === 'auto' && (terrain === 'electric' || itemId === 'boosterenergy')) {
+      return 'Quark Drive';
+    }
+  }
 
   if (speedOnly) {
     if (['chlorophyll', 'swiftswim', 'sandrush', 'slushrush', 'surgesurfer', 'unburden', 'slowstart'].includes(ab)) {

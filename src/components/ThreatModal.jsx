@@ -148,15 +148,16 @@ export default function ThreatModal({
                 opponentPokemon={userPokemon}
                 onStateChange={setThreatFullState}
                 fieldConditions={localFieldConditions}
+                allowParadoxModifierEditing={false}
               />
               {abilityError && <div className="threat-modal-error">{abilityError}</div>}
 
               {modalStep === 1 && !selectedPokemon && (
                 <div className="threat-modal-paste">
                   <div className="threat-modal-paste-label">OR paste a Showdown set to skip setup</div>
-                  <div className={`paste-input-shell ${pasteError ? 'error' : ''}`}>
+                  <div className={`paste-input-shell threat-modal-paste-shell ${pasteError ? 'error' : ''}`}>
                     <textarea
-                      className="paste-input"
+                      className="paste-input control-surface-input threat-modal-paste-input"
                       placeholder="Paste Showdown set here..."
                       value={pasteText}
                       onChange={(e) => handlePaste(e.target.value)}

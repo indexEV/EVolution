@@ -98,6 +98,36 @@ function getEffectiveHpForState(pokemon, fullState, evOverride, level = 100) {
   return { maxHp, currentHp };
 }
 
+function getParadoxBoostedStatForState(pokemon, fullState, fieldConditions = null, evOverrides = {}, level = 100) {
+  const abilityId = normId(fullState?.ability ?? '');
+  if (abilityId !== 'protosynthesis' && abilityId !== 'quarkdrive') return null;
+
+  const boostedStat = fullState?.boostedStat ?? undefined;
+  if (!boostedStat) return null;
+  if (boostedStat !== 'auto') return boostedStat;
+
+  const itemId = normId(fullState?.item?.name ?? '');
+  const weather = fieldConditions?.field?.weather ?? null;
+  const terrain = fieldConditions?.field?.terrain ?? null;
+  const active =
+    (abilityId === 'protosynthesis' && (weather === 'sun' || weather === 'harshSunshine' || itemId === 'boosterenergy')) ||
+    (abilityId === 'quarkdrive' && (terrain === 'electric' || itemId === 'boosterenergy'));
+  if (!active) return null;
+
+  const nature = fullState?.nature ?? 'Hardy';
+  const evs = { ...(fullState?.evs ?? {}), ...evOverrides };
+  const ivs = fullState?.ivs ?? {};
+  let bestStat = 'atk';
+
+  for (const stat of ['def', 'spa', 'spd', 'spe']) {
+    const current = calcStat(pokemon?.baseStats?.[stat] ?? 0, ivs?.[stat], evs?.[stat], nature, stat, level);
+    const best = calcStat(pokemon?.baseStats?.[bestStat] ?? 0, ivs?.[bestStat], evs?.[bestStat], nature, bestStat, level);
+    if (current > best) bestStat = stat;
+  }
+
+  return bestStat;
+}
+
 function getAbilitySpeedMultiplier(fullState, fieldConditions) {
   const abilityId = normId(fullState?.ability ?? '');
   const weather = fieldConditions?.field?.weather ?? null;
@@ -134,6 +164,9 @@ function calcSpeedFinal(pokemon, fullState, evOverride, stageTotal, tailwind, le
   if (tailwind) modifier *= 2;
   if (hasItem(fullState, 'Choice Scarf')) modifier *= 1.5;
   modifier *= getAbilitySpeedMultiplier(fullState, fieldConditions);
+  if (getParadoxBoostedStatForState(pokemon, fullState, fieldConditions, { spe: ev }, level) === 'spe') {
+    modifier *= 1.5;
+  }
 
   return Math.floor(speed * modifier);
 }
@@ -181,6 +214,7 @@ function makePokemon(speciesName, fullState, evOverride, level = 100) {
     evs:     evOverride ?? fullState.evs ?? {},
     ivs:     fullState.ivs          ?? {},
     ability: fullState.ability      ?? undefined,
+    boostedStat: fullState.boostedStat ?? undefined,
     status:  STATUS_MAP[fullState.status] ?? undefined,
     boosts:  fullState.stages       ?? {},
     level,
@@ -216,6 +250,7 @@ function calcIncoming(threatSpeciesName, threatFullState, threatBoosts,
     evs:     threatFullState.evs          ?? {},
     ivs:     threatFullState.ivs          ?? {},
     ability: threatFullState.ability      ?? undefined,
+    boostedStat: threatFullState.boostedStat ?? undefined,
     boosts:  threatBoosts,
     curHP:   threatFullState.currentHp    ?? undefined,
     level:   threatLevel,
@@ -226,6 +261,7 @@ function calcIncoming(threatSpeciesName, threatFullState, threatBoosts,
     evs:     testEvs,
     ivs:     userFullState.ivs           ?? {},
     ability: userFullState.ability       ?? undefined,
+    boostedStat: userFullState.boostedStat ?? undefined,
     status:  STATUS_MAP[userFullState.status] ?? undefined,
     boosts:  userFullState.stages        ?? {},
     curHP:   userFullState.currentHp     ?? undefined,
@@ -246,6 +282,7 @@ function calcOutgoing(userSpeciesName, userFullState, userBoosts, testEvs,
     evs:     testEvs,
     ivs:     userFullState.ivs           ?? {},
     ability: userFullState.ability       ?? undefined,
+    boostedStat: userFullState.boostedStat ?? undefined,
     status:  STATUS_MAP[userFullState.status] ?? undefined,
     boosts:  userBoosts,
     curHP:   userFullState.currentHp     ?? undefined,
@@ -257,6 +294,7 @@ function calcOutgoing(userSpeciesName, userFullState, userBoosts, testEvs,
     evs:     threatFullState.evs          ?? {},
     ivs:     threatFullState.ivs          ?? {},
     ability: threatFullState.ability      ?? undefined,
+    boostedStat: threatFullState.boostedStat ?? undefined,
     boosts:  threatFullState.stages       ?? {},
     curHP:   threatFullState.currentHp    ?? undefined,
     level:   threatLevel,
@@ -441,6 +479,41 @@ export function solveSpreads({
   const lockedTotal = totalEvs(lockedEvs);
   const remainingBudget = 510 - lockedTotal;
   const statUnlocks = { hp: true, atk: true, def: true, spa: true, spd: true, spe: true, ...(unlockedStats ?? {}) };
+  const baseNature = userFullState.nature ?? 'Hardy';
+  const preparedConstraints = constraints.map(normalizeConstraint);
+
+  const getPassedCount = (spread) => (spread.constraintResults ?? []).reduce(
+    (count, result) => count + (result.passed ? 1 : 0),
+    0
+  );
+
+  const getFailedSpreadMetrics = (spread) => {
+    const failed = (spread.constraintResults ?? []).filter((result) => !result.passed);
+    if (failed.length === 0) {
+      return { bestRate: 1, bestStrength: Number.POSITIVE_INFINITY };
+    }
+    return {
+      bestRate: Math.max(...failed.map((result) => result.successRate ?? 0)),
+      bestStrength: Math.max(...failed.map((result) => result.attemptStrength ?? Number.NEGATIVE_INFINITY)),
+    };
+  };
+
+  const compareSpreadOrder = (a, b) => {
+    if (a.allPassed !== b.allPassed) return Number(b.allPassed) - Number(a.allPassed);
+
+    const passedCountDelta = getPassedCount(b) - getPassedCount(a);
+    if (passedCountDelta !== 0) return passedCountDelta;
+
+    const aFailed = getFailedSpreadMetrics(a);
+    const bFailed = getFailedSpreadMetrics(b);
+    if (aFailed.bestRate !== bFailed.bestRate) return bFailed.bestRate - aFailed.bestRate;
+    if (aFailed.bestStrength !== bFailed.bestStrength) return bFailed.bestStrength - aFailed.bestStrength;
+
+    if (a.total !== b.total) return a.total - b.total;
+    if (a.nature === baseNature && b.nature !== baseNature) return -1;
+    if (b.nature === baseNature && a.nature !== baseNature) return 1;
+    return 0;
+  };
 
   if (remainingBudget < 0) {
     return {
@@ -453,10 +526,8 @@ export function solveSpreads({
   }
 
   if (optimizeNature) {
-    const baseNature = userFullState.nature ?? 'Hardy';
     const natureOrder = [baseNature, ...ALL_NATURES.filter((nature) => nature !== baseNature)];
     const combined = [];
-    let fallbackImpossible = [];
 
     natureOrder.forEach((nature) => {
       const branch = solveSpreads({
@@ -472,7 +543,6 @@ export function solveSpreads({
         optimizeNature: false,
       });
 
-      if (!fallbackImpossible.length && branch.impossible?.length) fallbackImpossible = branch.impossible;
       branch.spreads.forEach((spread) => combined.push({ ...spread, nature }));
     });
 
@@ -484,20 +554,13 @@ export function solveSpreads({
       return true;
     });
 
-    const getPassedCount = (spread) => spread.constraintResults.reduce((count, result) => count + (result.passed ? 1 : 0), 0);
-    deduped.sort((a, b) => {
-      if (a.allPassed !== b.allPassed) return Number(b.allPassed) - Number(a.allPassed);
-      const passedCountDelta = getPassedCount(b) - getPassedCount(a);
-      if (passedCountDelta !== 0) return passedCountDelta;
-      if (a.total !== b.total) return a.total - b.total;
-      if (a.nature === baseNature && b.nature !== baseNature) return -1;
-      if (b.nature === baseNature && a.nature !== baseNature) return 1;
-      return 0;
-    });
+    deduped.sort(compareSpreadOrder);
+    const hasValid = deduped.some((spread) => spread.allPassed);
+    const impossible = hasValid ? [] : buildImpossibleFromSpreads(deduped);
 
     return {
       spreads: deduped,
-      impossible: deduped.length > 0 ? [] : fallbackImpossible,
+      impossible,
       lockedEvs,
       lockedTotal,
       remainingBudget,
@@ -576,6 +639,7 @@ export function solveSpreads({
       threat: prepared.threat,
       successRate: 0,
       priorityScore: prepared.type === 'scarf' ? Number.NEGATIVE_INFINITY : 0,
+      attemptStrength: Number.NEGATIVE_INFINITY,
     };
 
     if (prepared.invalidReason) return baseFailure;
@@ -599,8 +663,14 @@ export function solveSpreads({
         const { maxHp: defMaxHp, currentHp: defCurrentHpRaw } = getEffectiveHpForState(userPokemon, userFullState, evs, userLevel);
         const defCurrentHp = Math.max(1, defCurrentHpRaw);
         const recovery = recoveryPerTurn(userFullState, defMaxHp);
-        const successRate = getSurviveSuccessRate(prepared.c.survive, result.damage, defCurrentHp, recovery);
+        const rolls = getDamageRolls(result.damage);
+        const distribution = getRepeatedHitDistribution(rolls, surviveHitsRequired(prepared.c.survive), recovery);
+        const successRate = getDistributionSuccessRate(distribution, (totalDamage) => passesStrictSurviveTotalDamage(totalDamage, defCurrentHp));
         const passed = passesGuaranteedSurviveRate(successRate);
+        let worstTotalDamage = Number.NEGATIVE_INFINITY;
+        distribution.forEach((_, totalDamage) => {
+          if (totalDamage > worstTotalDamage) worstTotalDamage = totalDamage;
+        });
         const pMin = (minDmg / defCurrentHp * 100).toFixed(1);
         const pMax = (maxDmg / defCurrentHp * 100).toFixed(1);
         return {
@@ -611,6 +681,7 @@ export function solveSpreads({
           threat: prepared.threat,
           successRate,
           priorityScore: successRate,
+          attemptStrength: defCurrentHp - worstTotalDamage,
         };
       }
 
@@ -632,8 +703,14 @@ export function solveSpreads({
         const { maxHp: defMaxHp, currentHp: defCurrentHpRaw } = getEffectiveHpForState(prepared.threat, prepared.tState, prepared.tState.evs, prepared.threatLevel);
         const defCurrentHp = Math.max(1, defCurrentHpRaw);
         const recovery = recoveryPerTurn(prepared.tState, defMaxHp);
-        const successRate = getKoSuccessRate(prepared.c.achieve, result.damage, defCurrentHp, recovery);
+        const rolls = getDamageRolls(result.damage);
+        const distribution = getRepeatedHitDistribution(rolls, koHitsRequired(prepared.c.achieve), recovery);
+        const successRate = getDistributionSuccessRate(distribution, (totalDamage) => passesGuaranteedKoTotalDamage(totalDamage, defCurrentHp));
         const passed = passesGuaranteedKoRate(successRate);
+        let minTotalDamage = Number.POSITIVE_INFINITY;
+        distribution.forEach((_, totalDamage) => {
+          if (totalDamage < minTotalDamage) minTotalDamage = totalDamage;
+        });
         const pMin = (minDmg / defCurrentHp * 100).toFixed(1);
         const pMax = (maxDmg / defCurrentHp * 100).toFixed(1);
         return {
@@ -644,6 +721,7 @@ export function solveSpreads({
           threat: prepared.threat,
           successRate,
           priorityScore: successRate,
+          attemptStrength: minTotalDamage - defCurrentHp,
         };
       }
 
@@ -676,6 +754,7 @@ export function solveSpreads({
           threat: prepared.threat,
           successRate: passed ? 1 : 0,
           priorityScore: margin,
+          attemptStrength: margin,
         };
       }
     } catch (error) {
@@ -693,6 +772,7 @@ export function solveSpreads({
       threat: prepared.threat,
       successRate: 1,
       priorityScore: 1,
+      attemptStrength: Number.POSITIVE_INFINITY,
     };
   }
 
@@ -710,7 +790,106 @@ export function solveSpreads({
     return 'Constraint cannot be satisfied within the remaining EV budget.';
   }
 
-  const preparedConstraints = constraints.map(normalizeConstraint);
+  function getRelevantStats(prepared) {
+    if (prepared.type === 'sword') return [prepared.offKey];
+    if (prepared.type === 'shield') return ['hp', prepared.defKey];
+    if (prepared.type === 'scarf') return ['spe'];
+    return [];
+  }
+
+  function compareConstraintAttempts(prepared, left, right) {
+    if (!right) return 1;
+    if (left.result.passed !== right.result.passed) return left.result.passed ? 1 : -1;
+    if ((left.result.successRate ?? 0) !== (right.result.successRate ?? 0)) {
+      return (left.result.successRate ?? 0) > (right.result.successRate ?? 0) ? 1 : -1;
+    }
+    if ((left.result.attemptStrength ?? Number.NEGATIVE_INFINITY) !== (right.result.attemptStrength ?? Number.NEGATIVE_INFINITY)) {
+      return (left.result.attemptStrength ?? Number.NEGATIVE_INFINITY) > (right.result.attemptStrength ?? Number.NEGATIVE_INFINITY) ? 1 : -1;
+    }
+
+    const relevantStats = getRelevantStats(prepared);
+    const leftRelevantTotal = relevantStats.reduce((sum, statKey) => sum + (left.evs?.[statKey] ?? 0), 0);
+    const rightRelevantTotal = relevantStats.reduce((sum, statKey) => sum + (right.evs?.[statKey] ?? 0), 0);
+    if (leftRelevantTotal !== rightRelevantTotal) return leftRelevantTotal > rightRelevantTotal ? 1 : -1;
+
+    const leftTotal = left.total ?? totalEvs(left.evs);
+    const rightTotal = right.total ?? totalEvs(right.evs);
+    if (leftTotal !== rightTotal) return leftTotal < rightTotal ? 1 : -1;
+    return 0;
+  }
+
+  function maximizeConstraintFromSpread(spread, prepared) {
+    if (prepared.invalidReason) return spread;
+
+    const availableBudget = 510 - spread.total;
+    if (availableBudget <= 0) return spread;
+
+    if (prepared.type === 'sword') {
+      const boostedEv = Math.min(maxSearchEv(prepared.offKey), spread.evs[prepared.offKey] + availableBudget);
+      const evs = { ...spread.evs, [prepared.offKey]: boostedEv };
+      return {
+        ...spread,
+        evs,
+        total: totalEvs(evs),
+      };
+    }
+
+    if (prepared.type === 'scarf') {
+      const boostedEv = Math.min(maxSearchEv('spe'), spread.evs.spe + availableBudget);
+      const evs = { ...spread.evs, spe: boostedEv };
+      return {
+        ...spread,
+        evs,
+        total: totalEvs(evs),
+      };
+    }
+
+    if (prepared.type === 'shield') {
+      let bestAttempt = {
+        evs: spread.evs,
+        total: spread.total,
+        result: evaluatePreparedConstraint(prepared, spread.evs),
+      };
+      const maxHpSearch = Math.min(maxSearchEv('hp'), spread.evs.hp + availableBudget);
+      for (const hpEv of getRelevantEvCandidates(spread.evs.hp, maxHpSearch)) {
+        const hpAdded = hpEv - spread.evs.hp;
+        const remainingAfterHp = availableBudget - hpAdded;
+        const boostedDef = Math.min(maxSearchEv(prepared.defKey), spread.evs[prepared.defKey] + remainingAfterHp);
+        const attemptEvs = {
+          ...spread.evs,
+          hp: hpEv,
+          [prepared.defKey]: boostedDef,
+        };
+        const attempt = {
+          evs: attemptEvs,
+          total: totalEvs(attemptEvs),
+          result: evaluatePreparedConstraint(prepared, attemptEvs),
+        };
+        if (compareConstraintAttempts(prepared, attempt, bestAttempt) > 0) bestAttempt = attempt;
+      }
+      return {
+        ...spread,
+        evs: bestAttempt.evs,
+        total: bestAttempt.total,
+      };
+    }
+
+    return spread;
+  }
+
+  function buildBestAttemptReason(prepared) {
+    if (prepared.invalidReason) return prepared.invalidReason;
+    if (prepared.type === 'sword') {
+      return `Best legal KO attempt against ${prepared.threat?.name ?? 'the target'} still fails after maximizing ${prepared.offKey === 'spa' ? 'SpA' : 'Atk'} within the remaining budget.`;
+    }
+    if (prepared.type === 'shield') {
+      return `Best legal survival attempt against ${prepared.threat?.name ?? 'the target'} still fails after maximizing HP + ${prepared.defKey === 'spd' ? 'SpD' : 'Def'} within the remaining budget.`;
+    }
+    if (prepared.type === 'scarf') {
+      return `Best legal Speed attempt against ${prepared.threat?.name ?? 'the target'} still fails after maximizing Spe within the remaining budget.`;
+    }
+    return getImpossibleReason(prepared);
+  }
 
   // ─── 1. OUTSPEED (SCARF) ──────────────────────────────────────────────────
   let minSpeEv = lockedEvs.spe;
@@ -827,7 +1006,119 @@ export function solveSpreads({
   }
 
   // ─── 4. Build final spreads ───────────────────────────────────────────────
-  if (surviveFrontier.length === 0) return { spreads: [], impossible, lockedEvs, lockedTotal, remainingBudget };
+  function buildSpread(evs) {
+    const total = totalEvs(evs);
+    const constraintResults = preparedConstraints.map((prepared) => evaluatePreparedConstraint(prepared, evs));
+    return {
+      evs,
+      total,
+      remaining: 510 - total,
+      added: total - lockedTotal,
+      constraintResults,
+      allPassed: constraintResults.every((result) => result.passed),
+      passedCount: constraintResults.reduce((count, result) => count + (result.passed ? 1 : 0), 0),
+    };
+  }
+
+  function buildImpossibleFromSpreads(candidateSpreads) {
+    if (candidateSpreads.length === 0) return impossible;
+    const maxPassedCount = Math.max(...candidateSpreads.map((spread) => spread.passedCount ?? getPassedCount(spread)));
+    const topTier = candidateSpreads.filter((spread) => (spread.passedCount ?? getPassedCount(spread)) === maxPassedCount);
+    const rows = [];
+
+    preparedConstraints.forEach((prepared, index) => {
+      const failedSpreads = topTier.filter((spread) => !spread.constraintResults[index]?.passed);
+      if (failedSpreads.length !== topTier.length) return;
+
+      let bestSpread = null;
+      failedSpreads.forEach((spread) => {
+        if (!bestSpread) {
+          bestSpread = spread;
+          return;
+        }
+        const candidate = {
+          evs: spread.evs,
+          total: spread.total,
+          result: spread.constraintResults[index],
+        };
+        const current = {
+          evs: bestSpread.evs,
+          total: bestSpread.total,
+          result: bestSpread.constraintResults[index],
+        };
+        if (compareConstraintAttempts(prepared, candidate, current) > 0) bestSpread = spread;
+      });
+
+      const bestResult = bestSpread.constraintResults[index];
+      rows.push({
+        type: prepared.type,
+        c: prepared.c,
+        threat: prepared.threat,
+        reason: buildBestAttemptReason(prepared),
+        desc: bestResult.desc,
+        range: bestResult.range,
+        successRate: bestResult.successRate,
+        attemptStrength: bestResult.attemptStrength,
+        passedCount: bestSpread.passedCount ?? getPassedCount(bestSpread),
+        nature: bestSpread.nature ?? baseNature,
+      });
+    });
+
+    return rows.length > 0 ? rows : impossible;
+  }
+
+  function buildBestEffortSpreads(seedSpreads) {
+    const queue = [...seedSpreads];
+    const bestByKey = new Map();
+    const terminal = new Map();
+
+    while (queue.length > 0) {
+      const spread = queue.shift();
+      const key = STAT_KEYS.map((statKey) => spread.evs?.[statKey] ?? 0).join('-');
+      const current = bestByKey.get(key);
+      if (current && compareSpreadOrder(spread, current) >= 0) continue;
+      bestByKey.set(key, spread);
+
+      const failedIndices = spread.constraintResults
+        .map((result, index) => ({ result, index }))
+        .filter(({ result }) => !result.passed)
+        .map(({ index }) => index);
+
+      let expanded = false;
+      failedIndices.forEach((index) => {
+        const prepared = preparedConstraints[index];
+        const attempt = buildSpread(maximizeConstraintFromSpread(spread, prepared).evs);
+        const attemptKey = STAT_KEYS.map((statKey) => attempt.evs?.[statKey] ?? 0).join('-');
+        if (attemptKey === key) return;
+        const seenAttempt = bestByKey.get(attemptKey);
+        if (!seenAttempt || compareSpreadOrder(attempt, seenAttempt) < 0) {
+          queue.push(attempt);
+          expanded = true;
+        }
+      });
+
+      if (!expanded) terminal.set(key, spread);
+    }
+
+    return [...terminal.values()].sort(compareSpreadOrder);
+  }
+
+  if (surviveFrontier.length === 0) {
+    const baseSeed = buildSpread({
+      ...lockedEvs,
+      atk: minAtkEv,
+      spa: minSpaEv,
+      spe: minSpeEv,
+    });
+    const bestEffortSpreads = buildBestEffortSpreads([baseSeed]);
+    return {
+      spreads: bestEffortSpreads,
+      impossible: buildImpossibleFromSpreads(bestEffortSpreads),
+      lockedEvs,
+      lockedTotal,
+      remainingBudget,
+    };
+  }
 
   // Pareto-filter: remove dominated points
   // Point A dominates B if A.bulkTotal <= B.bulkTotal AND A achieves same or more
@@ -842,45 +1133,33 @@ export function solveSpreads({
   // Sort by total bulk EVs (ascending), then by HP (descending - prefer HP over DEF/SPD)
   uniqueFrontier.sort((a, b) => a.bulkTotal - b.bulkTotal || b.hpEv - a.hpEv);
 
-  // Keep only the first 10 (Pareto-like, most efficient spread first)
-  // Each represents a different HP/DEF/SPD tradeoff point
-  const frontier = uniqueFrontier.slice(0, 10);
+  const frontier = uniqueFrontier;
 
   // ─── 5. Generate spreads with full descriptions ───────────────────────────
-  const spreads = [];
+  const spreads = frontier.map(({ hpEv, defEv, spdEv }) => buildSpread({
+    ...lockedEvs,
+    hp: hpEv,
+    atk: minAtkEv,
+    def: defEv,
+    spa: minSpaEv,
+    spd: spdEv,
+    spe: minSpeEv,
+  }));
 
-  for (const { hpEv, defEv, spdEv } of frontier) {
-    const evs = {
-      ...lockedEvs,
-      hp: hpEv,
-      atk: minAtkEv,
-      def: defEv,
-      spa: minSpaEv,
-      spd: spdEv,
-      spe: minSpeEv,
-    };
-    const total = totalEvs(evs);
-    const remaining = 510 - total;
+  spreads.sort(compareSpreadOrder);
 
-    // Run full calc for descriptions
-    const constraintResults = preparedConstraints.map((prepared) => evaluatePreparedConstraint(prepared, evs));
-
-    const allPassed = constraintResults.every(r => r.passed);
-    spreads.push({ evs, total, remaining, added: total - lockedTotal, constraintResults, allPassed });
+  if (spreads.some((spread) => spread.allPassed)) {
+    return { spreads, impossible: [], lockedEvs, lockedTotal, remainingBudget };
   }
 
-  const getPassedCount = (spread) => spread.constraintResults.reduce((count, result) => count + (result.passed ? 1 : 0), 0);
-
-  spreads.sort((a, b) => {
-    if (a.allPassed !== b.allPassed) return Number(b.allPassed) - Number(a.allPassed);
-
-    const passedCountDelta = getPassedCount(b) - getPassedCount(a);
-    if (passedCountDelta !== 0) return passedCountDelta;
-
-    return a.total - b.total;
-  });
-
-  return { spreads, impossible, lockedEvs, lockedTotal, remainingBudget };
+  const bestEffortSpreads = buildBestEffortSpreads(spreads);
+  return {
+    spreads: bestEffortSpreads,
+    impossible: buildImpossibleFromSpreads(bestEffortSpreads),
+    lockedEvs,
+    lockedTotal,
+    remainingBudget,
+  };
 }
 
 // ─── Showdown export string ───────────────────────────────────────────────────
