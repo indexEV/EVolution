@@ -220,8 +220,26 @@ function getAbilitySummary(fullState, fieldConditions, speedOnly = false) {
   if (abilityId === 'guts' && status) return 'Guts active';
   if (abilityId === 'quickfeet' && status) return 'Quick Feet active';
   if (abilityId === 'poisonheal' && ['psn', 'tox'].includes(status)) return 'Poison Heal';
-  if (abilityId === 'protosynthesis' && (weather === 'sun' || weather === 'harshSunshine' || itemId === 'boosterenergy')) return 'Protosynthesis';
-  if (abilityId === 'quarkdrive' && (terrain === 'electric' || itemId === 'boosterenergy')) return 'Quark Drive';
+  if (abilityId === 'protosynthesis') {
+    if (fullState?.boostedStat === 'atk') return 'Protosynthesis (Attack)';
+    if (fullState?.boostedStat === 'def') return 'Protosynthesis (Defense)';
+    if (fullState?.boostedStat === 'spa') return 'Protosynthesis (Sp. Atk)';
+    if (fullState?.boostedStat === 'spd') return 'Protosynthesis (Sp. Def)';
+    if (fullState?.boostedStat === 'spe') return 'Protosynthesis (Speed)';
+    if (fullState?.boostedStat === 'auto' && (weather === 'sun' || weather === 'harshSunshine' || itemId === 'boosterenergy')) {
+      return 'Protosynthesis';
+    }
+  }
+  if (abilityId === 'quarkdrive') {
+    if (fullState?.boostedStat === 'atk') return 'Quark Drive (Attack)';
+    if (fullState?.boostedStat === 'def') return 'Quark Drive (Defense)';
+    if (fullState?.boostedStat === 'spa') return 'Quark Drive (Sp. Atk)';
+    if (fullState?.boostedStat === 'spd') return 'Quark Drive (Sp. Def)';
+    if (fullState?.boostedStat === 'spe') return 'Quark Drive (Speed)';
+    if (fullState?.boostedStat === 'auto' && (terrain === 'electric' || itemId === 'boosterenergy')) {
+      return 'Quark Drive';
+    }
+  }
 
   if (speedOnly) {
     if (['chlorophyll', 'swiftswim', 'sandrush', 'slushrush', 'surgesurfer', 'unburden', 'slowstart'].includes(abilityId)) {
@@ -1044,7 +1062,14 @@ export default function Results({
               <div className="results-impossible-title">Impossible constraints under the current locked setup</div>
               {impossible.map((imp, i) => (
                 <div key={i} className="results-impossible-row">
-                  {imp.reason}
+                  <span className="results-impossible-reason">{imp.reason}</span>
+                  {imp.desc && <span className="results-impossible-calc">{imp.desc}</span>}
+                  {(imp.range || imp.nature) && (
+                    <div className="results-impossible-meta">
+                      {imp.range && <span className="results-impossible-range">{imp.range}</span>}
+                      {imp.nature && <span className="results-impossible-nature">{imp.nature} Nature</span>}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1103,9 +1128,9 @@ export default function Results({
             </button>
           )}
 
-          {validSpreads.length === 0 && impossible.length === 0 && spreads.length > 0 && (
+          {validSpreads.length === 0 && spreads.length > 0 && (
             <div className="results-partial">
-              <p>Partial spreads found but they don't pass all constraints. Try relaxing some requirements.</p>
+              <p>Best legal partial spreads found. Each remaining failed row is now the strongest legal attempt the solver could make without breaking the kept setup.</p>
               {spreads.slice(0, 3).map((s, i) => (
                 <SpreadCard
                   key={i}

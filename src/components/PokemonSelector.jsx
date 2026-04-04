@@ -134,6 +134,14 @@ const NATURES = {
   Quirky:  { boost: null, drop: null },
 };
 
+function getNatureMultiplier(nature, stat) {
+  if (!nature || !NATURES[nature]) return 1.0;
+  const { boost, drop } = NATURES[nature];
+  if (stat === boost) return 1.1;
+  if (stat === drop) return 0.9;
+  return 1.0;
+}
+
 const STAT_COLORS = {
   atk: '#B8D8FF',
   def: '#98D8B8',
@@ -447,6 +455,78 @@ const FORCED_MOVES = {
   'zamazenta-crowned': [{ slot: 0, moveName: 'Behemoth Bash' }],
 };
 const BOOST_STAT_PRIORITY = ['atk','def','spa','spd','spe'];
+const PARADOX_ABILITY_IDS = new Set(['protosynthesis', 'quarkdrive']);
+const PARADOX_BOOST_OPTIONS = [
+  { value: 'auto', label: 'Auto-Select' },
+  { value: 'disabled', label: 'Disabled' },
+  { value: 'atk', label: 'Attack' },
+  { value: 'def', label: 'Defense' },
+  { value: 'spa', label: 'Special Attack' },
+  { value: 'spd', label: 'Special Defense' },
+  { value: 'spe', label: 'Speed' },
+];
+const PARADOX_BOOST_LABELS = {
+  auto: 'Auto-Select',
+  disabled: 'Disabled',
+  atk: 'Attack',
+  def: 'Defense',
+  spa: 'Special Attack',
+  spd: 'Special Defense',
+  spe: 'Speed',
+};
+
+function getParadoxBoostMode(boostedStat) {
+  if (boostedStat === 'atk' || boostedStat === 'def' || boostedStat === 'spa' || boostedStat === 'spd' || boostedStat === 'spe') {
+    return boostedStat;
+  }
+  if (boostedStat === 'disabled') return 'disabled';
+  return 'auto';
+}
+
+function isParadoxAbilityActive(abilityId, boostedStat, item, fieldConditions) {
+  if (!PARADOX_ABILITY_IDS.has(abilityId)) return false;
+  const mode = getParadoxBoostMode(boostedStat);
+  if (mode === 'disabled') return false;
+  if (mode !== 'auto') return true;
+
+  const itemId = (item?.name ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (itemId === 'boosterenergy') return true;
+
+  const weather = fieldConditions?.field?.weather ?? null;
+  const terrain = fieldConditions?.field?.terrain ?? null;
+  if (abilityId === 'protosynthesis') return weather === 'sun' || weather === 'harshSunshine';
+  if (abilityId === 'quarkdrive') return terrain === 'electric';
+  return false;
+}
+
+function getParadoxBoostedStat(abilityId, boostedStat, rawStats, item, fieldConditions) {
+  if (!isParadoxAbilityActive(abilityId, boostedStat, item, fieldConditions)) return null;
+  const mode = getParadoxBoostMode(boostedStat);
+  if (mode !== 'auto') return mode;
+
+  let best = BOOST_STAT_PRIORITY[0];
+  for (const stat of BOOST_STAT_PRIORITY.slice(1)) {
+    if ((rawStats?.[stat] ?? 0) > (rawStats?.[best] ?? 0)) best = stat;
+  }
+  return best;
+}
+
+function buildNaturalNonHpStats(pokemon, evs, ivs, nature, level = 100) {
+  if (!pokemon?.baseStats) return { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
+  const safeEvs = evs ?? {};
+  const safeIvs = ivs ?? {};
+  const out = {};
+
+  for (const stat of BOOST_STAT_PRIORITY) {
+    const base = pokemon.baseStats[stat] ?? 0;
+    const iv = typeof safeIvs[stat] === 'number' ? safeIvs[stat] : 31;
+    const ev = safeEvs[stat] ?? 0;
+    const raw = Math.floor(Math.floor((2 * base + iv + Math.floor(ev / 4)) * level / 100) + 5);
+    out[stat] = Math.floor(raw * getNatureMultiplier(nature ?? 'Hardy', stat));
+  }
+
+  return out;
+}
 
 // Stack-based abilities — each activation = +1 stat stage on the listed stat.
 // beast boost / as one: highest stat (resolved at render time).
@@ -512,8 +592,6 @@ function getModifierPills(selectedAbility, status, entryPillDefs, effectiveAbili
   if (ab === 'sandforce')   push('sandforce',   'Sand Force');
 
   // ── Condition-triggered multipliers (OFF by default) ─────────────────────
-  if (ab === 'protosynthesis')  push('protosynthesis',  'Protosynthesis');
-  if (ab === 'quarkdrive')      push('quarkdrive',      'Quark Drive');
   if (ab === 'hadronengine')    push('hadronengine',    'Hadron Engine');
   if (ab === 'orichalcumpulse') push('orichalcumpulse', 'Orichalcum Pulse');
   if (ab === 'flashfire')       push('flashfire',       'Flash Fire');
@@ -572,7 +650,16 @@ function getModifierPills(selectedAbility, status, entryPillDefs, effectiveAbili
 
 // Apply active modifier pills to a single stat's effective value.
 // stagedStats = { atk, def, spa, spd, spe } WITH stages (base for multiplication)
-function applyModifiers(stat, stagedVal, stagedStats, selectedAbility, activeModifiers, stackCounts, effectiveAbility) {
+function applyModifiers(
+  stat,
+  stagedVal,
+  stagedStats,
+  selectedAbility,
+  activeModifiers,
+  stackCounts,
+  effectiveAbility,
+  paradoxBoostedStat
+) {
   const ab = _normAb(effectiveAbility ?? selectedAbility);
   let val = stagedVal;
   const on = id => activeModifiers.has(id);
@@ -633,12 +720,8 @@ function applyModifiers(stat, stagedVal, stagedStats, selectedAbility, activeMod
     val = Math.floor(val * 1.5);
 
   // ── Protosynthesis / Quark Drive: ×1.3 highest stat (×1.5 if SPE) ────────
-  if ((ab === 'protosynthesis' || ab === 'quarkdrive') && on(ab)) {
-    let best = BOOST_STAT_PRIORITY[0];
-    for (const s of BOOST_STAT_PRIORITY.slice(1)) {
-      if ((stagedStats[s] ?? 0) > (stagedStats[best] ?? 0)) best = s;
-    }
-    if (best === stat) val = Math.floor(val * (stat === 'spe' ? 1.5 : 1.3));
+  if ((ab === 'protosynthesis' || ab === 'quarkdrive') && paradoxBoostedStat === stat) {
+    val = Math.floor(val * (stat === 'spe' ? 1.5 : 1.3));
   }
 
   // ── Hadron Engine: ×1.3333 SPA ───────────────────────────────────────────
@@ -731,7 +814,22 @@ function computeEffectiveStages(statStages, opponentInfo, pillDefs, activeModifi
 }
 
 
-const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapsed, step = 1, onAbilityError, opponentInfo, opponentFullState, opponentPokemon, onStateChange, level = 100, onLevelChange = null, fieldConditions = null }, ref) => {
+const PokemonSelector = forwardRef(({
+  title,
+  onSelect,
+  selectedPokemon,
+  collapsed,
+  step = 1,
+  onAbilityError,
+  opponentInfo,
+  opponentFullState,
+  opponentPokemon,
+  onStateChange,
+  level = 100,
+  onLevelChange = null,
+  fieldConditions = null,
+  allowParadoxModifierEditing = false,
+}, ref) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInputRef = useRef(null);
@@ -751,6 +849,9 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
   const [stackCounts, setStackCounts] = useState({ speedboost: 0, moxie: 0, grimneigh: 0, chillingneigh: 0, beastboost: 0, asone: 0, stamina: 0, berserk: 0, strengthsap: 0, justified: 0, rattled: 0, thermalexchange: 0, sapsipper: 0, motordrive: 0, lightningrod: 0, stormdrain: 0, steamengine: 0, watercompaction: 0, weakarmor: 0, angershell: 0 });
   const [stackDropdownOpen, setStackDropdownOpen] = useState(null); // id of open stack dropdown
   const [stackDropdownRect, setStackDropdownRect] = useState(null);
+  const [paradoxBoostModes, setParadoxBoostModes] = useState({ protosynthesis: 'auto', quarkdrive: 'auto' });
+  const [paradoxDropdownOpen, setParadoxDropdownOpen] = useState(null);
+  const [paradoxDropdownRect, setParadoxDropdownRect] = useState(null);
   // Ability copied by Trace / Receiver / Power of Alchemy (null when inactive)
   const [tracedAbility, setTracedAbility] = useState(null);
   // Ability manually picked by Power of Alchemy / Receiver from the ability picker
@@ -771,15 +872,33 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
   const natureTriggerRef = useRef(null);
   // Local raw string for the level input — allows deletion to empty before re-clamping on blur
   const [levelRaw, setLevelRaw] = useState(String(level ?? 100));
+  const canEditParadoxModifiers = allowParadoxModifierEditing && step === 2;
+
+  const getParadoxModeForAbility = (abilityName) => {
+    const abilityId = _normAb(abilityName);
+    return PARADOX_ABILITY_IDS.has(abilityId) ? (paradoxBoostModes[abilityId] ?? 'auto') : 'disabled';
+  };
+
+  const getParadoxBoostSettingForState = (abilityName, rawStats, item) => {
+    const abilityId = _normAb(abilityName);
+    if (!PARADOX_ABILITY_IDS.has(abilityId)) return undefined;
+    const mode = getParadoxModeForAbility(abilityId);
+    if (mode === 'disabled') return undefined;
+    return mode === 'auto'
+      ? 'auto'
+      : getParadoxBoostedStat(abilityId, mode, rawStats, item, fieldConditions) ?? mode;
+  };
 
   // Close all dropdowns when clicking outside
   useEffect(() => {
     const handleOutsideClick = (e) => {
       if (e.target.closest('.nature-dropdown-list') ||
           e.target.closest('.stat-stage-menu') ||
+          e.target.closest('.paradox-boost-menu') ||
           e.target.closest('.search-results') ||
           e.target.closest('.nature-dropdown-wrap') ||
           e.target.closest('.stat-stage-dropdown') ||
+          e.target.closest('.paradox-boost-wrap') ||
           e.target.closest('.poa-dropdown-list') ||
           e.target.closest('.pokemon-search')) return;
       setNatureOpen(false);
@@ -787,6 +906,7 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
       setSearchOpen(false);
       setPoaOpen(false);
       setStackDropdownOpen(null);
+      setParadoxDropdownOpen(null);
     };
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
@@ -796,6 +916,11 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
   useEffect(() => {
     setLevelRaw(String(level ?? 100));
   }, [level]);
+
+  useEffect(() => {
+    setParadoxDropdownOpen(null);
+    setParadoxDropdownRect(null);
+  }, [selectedAbility, tracedAbility, poaPickedAbility, step]);
 
 
   const [isShiny, setIsShiny] = useState(false);
@@ -936,8 +1061,6 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
     if (ab === 'sandrush'         && SAND)  toEnable.add(ab);
     if (ab === 'slushrush'        && SNOW)  toEnable.add(ab);
     if (ab === 'surgesurfer'      && ELEC)  toEnable.add(ab);
-    if (ab === 'quarkdrive'       && ELEC)  toEnable.add(ab);
-    if (ab === 'protosynthesis'   && SUN)   toEnable.add(ab);
     if (ab === 'solarpower'       && SUN)   toEnable.add(ab);
     if (ab === 'flowergift'       && SUN)   toEnable.add(ab);
     if (ab === 'sandforce'        && SAND)  toEnable.add(ab);
@@ -982,8 +1105,6 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
     const CONDITION_MAP = {
       hadronengine:    ELEC,
       orichalcumpulse: SUN,
-      quarkdrive:      ELEC,
-      protosynthesis:  SUN,
       chlorophyll:     SUN,
       swiftswim:       RAIN,
       sandrush:        SAND,
@@ -1005,6 +1126,16 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
       });
     }
   }, [fieldConditions, selectedAbility, tracedAbility]);
+
+  useEffect(() => {
+    setActiveModifiers(prev => {
+      if (!prev.has('protosynthesis') && !prev.has('quarkdrive')) return prev;
+      const next = new Set(prev);
+      next.delete('protosynthesis');
+      next.delete('quarkdrive');
+      return next;
+    });
+  }, [selectedAbility, tracedAbility, fieldConditions]);
 
   // ── Transformation item lock ─────────────────────────────────────────────
   // These pokemon must hold their transformation item — user cannot change it.
@@ -1150,6 +1281,17 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
       const copyStats = imposterActive || (activeModifiers.has('copystatchanges') && opponentFullState);
       const effectiveAbility = tracedAbility ?? poaPickedAbility ?? selectedAbility;
       const calcPoke = imposterActive && opponentPokemon ? opponentPokemon : selectedPokemon;
+      const calcEvs = imposterActive && opponentFullState
+        ? { ...opponentFullState.evs, hp: userEvs.hp }
+        : userEvs;
+      const calcIvs = imposterActive && opponentFullState
+        ? { ...opponentFullState.ivs, hp: userIvs.hp }
+        : userIvs;
+      const calcNature = imposterActive && opponentFullState
+        ? (opponentFullState.nature ?? 'Hardy')
+        : selectedNature;
+      const paradoxRawStats = buildNaturalNonHpStats(calcPoke, calcEvs, calcIvs, calcNature, level ?? 100);
+      const boostedStat = getParadoxBoostSettingForState(effectiveAbility, paradoxRawStats, selectedItem);
       const calcBaseStages = copyStats
         ? (opponentFullState?.stages ?? {})
         : statStages;
@@ -1171,6 +1313,7 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
           nature: opponentFullState.nature ?? 'Hardy',
           shiny: isShiny,
           item: selectedItem,
+          boostedStat,
           status,
           currentHp,
           hpPctStr,
@@ -1186,6 +1329,7 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
         nature: selectedNature,
         shiny: isShiny,
         item: selectedItem,
+        boostedStat,
         status,
         currentHp,
         hpPctStr,
@@ -1253,10 +1397,11 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
           setSelectedMoves(resolved);
         }
 
-        setStatus(null);
-        setCurrentHp(null);
-        setHpPctStr(null);
-      }, 0);
+      setStatus(null);
+      setCurrentHp(null);
+      setHpPctStr(null);
+      setParadoxBoostModes({ protosynthesis: 'auto', quarkdrive: 'auto' });
+    }, 0);
 
       return { success: true, pokemon: found };
     },
@@ -1278,6 +1423,12 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
       setHpPctStr(s.hpPctStr);
       setSelectedMoves(s.moves);
       setCritMoves(s.crits);
+      const abilityId = _normAb(s.ability);
+      if (PARADOX_ABILITY_IDS.has(abilityId)) {
+        setParadoxBoostModes(prev => ({ ...prev, [abilityId]: getParadoxBoostMode(s.boostedStat) }));
+      } else {
+        setParadoxBoostModes({ protosynthesis: 'auto', quarkdrive: 'auto' });
+      }
     },
     // Called from App.jsx when transitioning step 1→2.
     // Accepts array of { role, stat, delta, label, reaction } interactions.
@@ -1361,14 +1512,6 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
       '-6': 0.25
     };
     return multipliers[stage] || 1.0;
-  };
-
-  const getNatureMultiplier = (nature, stat) => {
-    if (!nature || !NATURES[nature]) return 1.0;
-    const { boost, drop } = NATURES[nature];
-    if (stat === boost) return 1.1;
-    if (stat === drop) return 0.9;
-    return 1.0;
   };
 
   useEffect(() => {
@@ -1712,6 +1855,22 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
   // Notify parent of current stats (for opponent BP calculations + Download + Intimidate)
   useEffect(() => {
     if (calculatedStats && selectedPokemon) {
+      const effectiveAbilityName = tracedAbility ?? poaPickedAbility ?? selectedAbility;
+      const isTransformed =
+        ((_normAb(selectedAbility) === 'imposter' && activeModifiers.has('imposter')) || activeModifiers.has('transformpill'))
+        && opponentFullState;
+      const displayPoke = isTransformed && opponentPokemon ? opponentPokemon : selectedPokemon;
+      const displayEvs = isTransformed && opponentFullState ? { ...opponentFullState.evs, hp: userEvs.hp } : userEvs;
+      const displayIvs = isTransformed && opponentFullState ? { ...opponentFullState.ivs, hp: userIvs.hp } : userIvs;
+      const displayNature = isTransformed && opponentFullState ? (opponentFullState.nature ?? 'Hardy') : selectedNature;
+      const rawStats = buildNaturalNonHpStats(displayPoke, displayEvs, displayIvs, displayNature, level ?? 100);
+      const paradoxBoostedStat = getParadoxBoostedStat(
+        _normAb(effectiveAbilityName),
+        getParadoxModeForAbility(effectiveAbilityName),
+        rawStats,
+        selectedItem,
+        fieldConditions
+      );
       const intimidatePill = entryPillDefsRef.current.find(p => p.role === 'attacker' && p.label === 'Intimidate');
       const effectiveAbilityId = _normAb(tracedAbility ?? poaPickedAbility ?? selectedAbility);
       const copiedIntimidateActive = effectiveAbilityId === 'intimidate' && activeModifiers.has('intimidate');
@@ -1722,9 +1881,9 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
       const neutralizingGas = neutralGasPill ? activeModifiers.has(neutralGasPill.id) : false;
       onStateChange?.({
         weight: selectedPokemon.weight || 0,
-        spe: calculatedStats.spe,
-        def: calculatedStats.def,
-        spd: calculatedStats.spd,
+        spe: applyModifiers('spe', calculatedStats.spe, calculatedStats, selectedAbility, activeModifiers, stackCounts, effectiveAbilityName, paradoxBoostedStat),
+        def: applyModifiers('def', calculatedStats.def, calculatedStats, selectedAbility, activeModifiers, stackCounts, effectiveAbilityName, paradoxBoostedStat),
+        spd: applyModifiers('spd', calculatedStats.spd, calculatedStats, selectedAbility, activeModifiers, stackCounts, effectiveAbilityName, paradoxBoostedStat),
         currentHp: currentHp ?? calculatedStats.hp,
         maxHp: calculatedStats.hp,
         intimidateActive,
@@ -1732,7 +1891,7 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
         neutralizingGas,
       });
     }
-  }, [calculatedStats, currentHp, selectedPokemon, activeModifiers, selectedAbility, tracedAbility, poaPickedAbility]);
+  }, [calculatedStats, currentHp, selectedPokemon, activeModifiers, stackCounts, selectedAbility, tracedAbility, poaPickedAbility, opponentFullState, opponentPokemon, userEvs, userIvs, selectedNature, level, selectedItem, fieldConditions]);
 
   // Download: re-evaluate which stat gets boosted in real time as opp EVs/IVs/nature change
   useEffect(() => {
@@ -1815,6 +1974,7 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
     downloadBoostRef.current = null;
     entryPillDefsRef.current = [];
     setActiveModifiers(new Set());
+    setParadoxBoostModes({ protosynthesis: 'auto', quarkdrive: 'auto' });
     setStackCounts({ speedboost: 0, moxie: 0, grimneigh: 0, chillingneigh: 0, beastboost: 0, asone: 0, stamina: 0, berserk: 0, strengthsap: 0, justified: 0, rattled: 0, thermalexchange: 0, sapsipper: 0, motordrive: 0, lightningrod: 0, stormdrain: 0, steamengine: 0, watercompaction: 0, weakarmor: 0, angershell: 0 });
     setTracedAbility(null);
     setIsShiny(false);
@@ -1843,6 +2003,7 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
     setCalculatedStats(null);
     setSelectedNature('Hardy');
     setActiveModifiers(new Set());
+    setParadoxBoostModes({ protosynthesis: 'auto', quarkdrive: 'auto' });
     setIsShiny(false);
     setSelectedItem(null);
     setItemSearch('');
@@ -2338,6 +2499,14 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
                   const displayIvs   = isTransformedRow && opponentFullState ? opponentFullState.ivs   : userIvs;
                   const displayNature= isTransformedRow && opponentFullState ? (opponentFullState.nature ?? 'Hardy') : selectedNature;
                   const displayStages= copyStageChanges && opponentFullState ? (opponentFullState.stages ?? {}) : statStages;
+                  const naturalStatsForModifiers = buildNaturalNonHpStats(displayPoke, displayEvs, displayIvs, displayNature, level ?? 100);
+                  const paradoxBoostedStat = getParadoxBoostedStat(
+                    _normAb(effectiveAbilityForRow),
+                    getParadoxModeForAbility(effectiveAbilityForRow),
+                    naturalStatsForModifiers,
+                    selectedItem,
+                    fieldConditions
+                  );
 
                   // Effective stages including reactive intimidate (shown in stage button)
                   const effStages = collapsed
@@ -2378,10 +2547,11 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
                   const effAbId = effectiveAbility ? _normAb(effectiveAbility) : null;
                   const hasMultiplier = [...activeModifiers].some(id => MULTIPLIER_IDS.has(id))
                     || Object.values(stackCounts).some(v => v > 0)
-                    || (effAbId !== null && MULTIPLIER_IDS.has(effAbId));
+                    || (effAbId !== null && MULTIPLIER_IDS.has(effAbId))
+                    || paradoxBoostedStat !== null;
                   const effectiveStat = collapsed && calculatedStats && stat !== 'hp' ? (() => {
                     return hasMultiplier
-                      ? applyModifiers(stat, calculatedStats[stat], calculatedStats, selectedAbility, activeModifiers, stackCounts, effectiveAbility)
+                      ? applyModifiers(stat, calculatedStats[stat], calculatedStats, selectedAbility, activeModifiers, stackCounts, effectiveAbility, paradoxBoostedStat)
                       : calculatedStats[stat];
                   })() : null;
 
@@ -2540,6 +2710,11 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
                     p => (p.role === 'trace' || p.role === 'receiver' || p.role === 'powerofalchemy') && activeModifiers.has(p.id)
                   );
                   const traceEffectiveAbility = traceActivePill2?.copiedAbility ?? tracedAbility ?? poaPickedAbility ?? null;
+                  const paradoxAbilityName = traceEffectiveAbility ?? selectedAbility;
+                  const paradoxAbilityId = _normAb(paradoxAbilityName);
+                  const paradoxMode = getParadoxModeForAbility(paradoxAbilityName);
+                  const paradoxOptionLabel = PARADOX_BOOST_LABELS[paradoxMode] ?? PARADOX_BOOST_LABELS.auto;
+                  const showParadoxControl = PARADOX_ABILITY_IDS.has(paradoxAbilityId);
                   const pills = getModifierPills(selectedAbility, status, entryPillDefsRef.current, traceEffectiveAbility, selectedPokemon?.id ?? '');
                   // Find PoA/Receiver pill separately — rendered inline as a picker
                   const poaPill = entryPillDefsRef.current.find(p => p.role === 'receiver' || p.role === 'powerofalchemy');
@@ -2571,7 +2746,71 @@ const PokemonSelector = forwardRef(({ title, onSelect, selectedPokemon, collapse
                           )}
                         </span>
                       )}
-                      {pills.length === 0 && !poaPill
+                      {showParadoxControl && (
+                        <span className="paradox-boost-wrap">
+                          <span className="modifier-inline-label">
+                            {paradoxAbilityId === 'protosynthesis' ? 'Protosynthesis:' : 'Quark Drive:'}
+                          </span>
+                          {canEditParadoxModifiers ? (
+                            <>
+                              <button
+                                type="button"
+                                className={`modifier-select-trigger ${paradoxDropdownOpen === paradoxAbilityId ? 'open' : ''}`}
+                                onMouseDown={e => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (paradoxDropdownOpen === paradoxAbilityId) {
+                                    setParadoxDropdownOpen(null);
+                                    setParadoxDropdownRect(null);
+                                    return;
+                                  }
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  const dropH = PARADOX_BOOST_OPTIONS.length * 36;
+                                  const openUp = window.innerHeight - rect.bottom < dropH + 8;
+                                  setParadoxDropdownRect({ ...rect.toJSON(), openUp });
+                                  setParadoxDropdownOpen(paradoxAbilityId);
+                                }}
+                              >
+                                <span className="modifier-select-trigger-value">{paradoxOptionLabel}</span>
+                                <span className="modifier-select-caret" aria-hidden="true" />
+                              </button>
+                              {paradoxDropdownOpen === paradoxAbilityId && paradoxDropdownRect && createPortal(
+                                <div
+                                  className="paradox-boost-menu"
+                                  style={{
+                                    position: 'fixed',
+                                    left: paradoxDropdownRect.left,
+                                    width: Math.max(paradoxDropdownRect.width, 190),
+                                    ...(paradoxDropdownRect.openUp
+                                      ? { bottom: window.innerHeight - paradoxDropdownRect.top + 4 }
+                                      : { top: paradoxDropdownRect.bottom + 4 }),
+                                    zIndex: 99999,
+                                  }}
+                                >
+                                  {PARADOX_BOOST_OPTIONS.map(option => (
+                                    <button
+                                      key={option.value}
+                                      type="button"
+                                      className={`paradox-boost-option ${paradoxMode === option.value ? 'active' : ''}`}
+                                      onMouseDown={e => {
+                                        e.preventDefault();
+                                        setParadoxBoostModes(prev => ({ ...prev, [paradoxAbilityId]: option.value }));
+                                        setParadoxDropdownOpen(null);
+                                      }}
+                                    >
+                                      {option.label}
+                                    </button>
+                                  ))}
+                                </div>,
+                                document.body
+                              )}
+                            </>
+                          ) : (
+                            <span className="modifier-select-readonly">{paradoxOptionLabel}</span>
+                          )}
+                        </span>
+                      )}
+                      {pills.length === 0 && !poaPill && !showParadoxControl
                         ? <span className="modifier-pills-none">None</span>
                         : pills
                           // Hide "Copy Stat Changes" until Transform pill is ON

@@ -704,6 +704,7 @@ export default function App() {
                   level={userLevel}
                   onLevelChange={setUserLevel}
                   fieldConditions={fieldConditions}
+                  allowParadoxModifierEditing
                 />
                 {step === 1 && !userPokemon && (
                     <LiquidGlass
@@ -746,6 +747,7 @@ export default function App() {
                   level={enemyLevel}
                   onLevelChange={setEnemyLevel}
                   fieldConditions={fieldConditions}
+                  allowParadoxModifierEditing
                 />
                 {step === 1 && !enemyPokemon && (
                     <LiquidGlass
