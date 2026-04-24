@@ -101,7 +101,7 @@ const cloneValue = (value) => structuredClone(value);
 function createDebugFieldConditions() {
   return {
     field: {
-      format: 'doubles',
+      format: 'singles',
       level: 100,
       terrain: null,
       weather: 'snow',
@@ -559,7 +559,6 @@ export default function App() {
         customThreat: sinistchaThreat,
         moveIndex: abomasnowMoveIndex,
         achieve: '1hko',
-        singleTargetDamage: true,
       }),
     ]);
     setStep7CalcToken(0);

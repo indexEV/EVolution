@@ -67,6 +67,7 @@ const DAMAGE_REDUCTION_BERRIES = new Set([
   'passhoberry', 'payapaberry', 'rindoberry', 'roseliberry', 'shucaberry',
   'tangaberry', 'wacanberry', 'yacheberry',
 ]);
+const CONFUSION_BERRIES = new Set(['aguavberry', 'figyberry', 'iapapaberry', 'magoberry', 'wikiberry']);
 const GUARANTEED_SUCCESS_RATE = 1;
 
 function actualEvs(evs = EMPTY_EVS) {
@@ -87,6 +88,23 @@ function hasItem(fullState, itemName) {
 
 function hasDamageReductionBerry(fullState) {
   return DAMAGE_REDUCTION_BERRIES.has(normId(fullState?.item?.name ?? ''));
+}
+
+function getItemId(fullState) {
+  return normId(fullState?.item?.name ?? '');
+}
+
+function hasType(pokemon, typeName) {
+  return (pokemon?.types ?? []).includes(typeName);
+}
+
+function isGrounded(pokemon, fullState) {
+  const abilityId = normId(fullState?.ability ?? '');
+  const itemId = getItemId(fullState);
+  if (itemId === 'ironball') return true;
+  if (itemId === 'airballoon') return false;
+  if (abilityId === 'levitate') return false;
+  return !hasType(pokemon, 'Flying');
 }
 
 // ─── Stat formulas ───────────────────────────────────────────────────────────
@@ -365,18 +383,49 @@ function userBoostsForKO(userFullState, c) {
   return boosts;
 }
 
-// Recovery per turn (for survive calculations)
-function recoveryPerTurn(userFullState, maxHp) {
-  const itemName = (userFullState.item?.name ?? '').toLowerCase().replace(/[^a-z]/g, '');
-  if (itemName === 'leftovers')  return Math.floor(maxHp / 16);
-  if (itemName === 'blacksludge') {
-    // Only Poison types heal; others take damage — handled by calc, skip here
-    return Math.floor(maxHp / 16);
+// Recurring end-of-turn recovery/residual between repeated-hit checks.
+function recoveryPerTurn(pokemon, fullState, maxHp, fieldConditions = null, sideKey = null) {
+  const itemId = getItemId(fullState);
+  const abilityId = normId(fullState?.ability ?? '');
+  const side = sideKey ? (fieldConditions?.[sideKey] ?? {}) : {};
+  let recovery = 0;
+  if (itemId === 'leftovers') recovery += Math.floor(maxHp / 16);
+  if (itemId === 'blacksludge') {
+    recovery += hasType(pokemon, 'Poison') ? Math.floor(maxHp / 16) : -Math.floor(maxHp / 8);
   }
-  const ab = (userFullState.ability ?? '').toLowerCase().replace(/[^a-z]/g, '');
-  if (ab === 'poisonheal' && ['psn','tox'].includes(userFullState.status))
-    return Math.floor(maxHp / 8);
-  return 0;
+  const ab = abilityId;
+  if (ab === 'poisonheal' && ['psn', 'tox'].includes(fullState.status)) {
+    recovery += Math.floor(maxHp / 8);
+  }
+  if (fieldConditions?.field?.terrain === 'grassy' && isGrounded(pokemon, fullState)) {
+    recovery += Math.floor(maxHp / 16);
+  }
+  if (side.leechSeed) recovery -= Math.floor(maxHp / 8);
+  if (side.saltCure) {
+    recovery -= Math.floor(maxHp / (hasType(pokemon, 'Water') || hasType(pokemon, 'Steel') ? 4 : 8));
+  }
+
+  return recovery;
+}
+
+function applyOneTimeHealingItem(hp, maxHp, fullState, healItemUsed) {
+  if (hp <= 0 || healItemUsed) return { hp, healItemUsed };
+
+  const itemId = getItemId(fullState);
+  if (itemId === 'sitrusberry' && hp <= Math.floor(maxHp / 2)) {
+    return { hp: Math.min(maxHp, hp + Math.floor(maxHp / 4)), healItemUsed: true };
+  }
+  if (itemId === 'oranberry' && hp <= Math.floor(maxHp / 2)) {
+    return { hp: Math.min(maxHp, hp + 10), healItemUsed: true };
+  }
+  if (itemId === 'berryjuice' && hp <= Math.floor(maxHp / 2)) {
+    return { hp: Math.min(maxHp, hp + 20), healItemUsed: true };
+  }
+  if (CONFUSION_BERRIES.has(itemId) && hp <= Math.floor(maxHp / 4)) {
+    return { hp: Math.min(maxHp, hp + Math.floor(maxHp / 3)), healItemUsed: true };
+  }
+
+  return { hp, healItemUsed };
 }
 
 function surviveHitsRequired(mode) {
@@ -687,7 +736,7 @@ export function solveSpreads({
     return base;
   }
 
-  function buildSurviveDistribution(prepared, evs, firstResult, recovery) {
+  function buildSurviveDistribution(prepared, evs, firstResult, recovery, currentHp, maxHp) {
     const hits = surviveHitsRequired(prepared.c.survive);
     const firstRolls = getDamageRolls(firstResult.damage);
     const rollGroups = [firstRolls];
@@ -722,7 +771,50 @@ export function solveSpreads({
       }
     }
 
-    return getRepeatedHitDistributionForRollGroups(rollGroups, recovery);
+    const itemId = getItemId(userFullState);
+    let states = new Map([[`${currentHp}:0:0`, { hp: currentHp, sashUsed: false, healItemUsed: false, count: 1 }]]);
+
+    for (let hit = 0; hit < rollGroups.length; hit += 1) {
+      const next = new Map();
+      const rolls = rollGroups[hit] ?? [0];
+
+      for (const state of states.values()) {
+        for (const roll of rolls) {
+          let hp = state.hp;
+          if (hit > 0 && hp > 0) hp = Math.min(maxHp, hp + recovery);
+          let sashUsed = state.sashUsed;
+          let healItemUsed = state.healItemUsed;
+
+          if (hp <= 0) {
+            // Already fainted on a previous hit; it cannot be recovered by later turn effects.
+          } else if (itemId === 'focussash' && !sashUsed && hp === maxHp && roll >= hp) {
+            hp = 1;
+            sashUsed = true;
+          } else {
+            hp -= roll;
+          }
+
+          const healed = applyOneTimeHealingItem(hp, maxHp, userFullState, healItemUsed);
+          hp = healed.hp;
+          healItemUsed = healed.healItemUsed;
+
+          const key = `${hp}:${sashUsed ? 1 : 0}:${healItemUsed ? 1 : 0}`;
+          const existing = next.get(key);
+          if (existing) existing.count += state.count;
+          else next.set(key, { hp, sashUsed, healItemUsed, count: state.count });
+        }
+      }
+
+      states = next;
+    }
+
+    const distribution = new Map();
+    for (const state of states.values()) {
+      const effectiveDamage = currentHp - state.hp;
+      distribution.set(effectiveDamage, (distribution.get(effectiveDamage) ?? 0) + state.count);
+    }
+
+    return distribution;
   }
 
   function evaluatePreparedConstraint(prepared, evs) {
@@ -758,8 +850,14 @@ export function solveSpreads({
         const [minDmg, maxDmg] = result.range();
         const { maxHp: defMaxHp, currentHp: defCurrentHpRaw } = getEffectiveHpForState(userPokemon, userFullState, evs, userLevel);
         const defCurrentHp = Math.max(1, defCurrentHpRaw);
-        const recovery = recoveryPerTurn(userFullState, defMaxHp);
-        const distribution = buildSurviveDistribution(prepared, evs, result, recovery);
+        const recovery = recoveryPerTurn(
+          userPokemon,
+          userFullState,
+          defMaxHp,
+          prepared.constraintFieldConditions,
+          'userSide'
+        );
+        const distribution = buildSurviveDistribution(prepared, evs, result, recovery, defCurrentHp, defMaxHp);
         const successRate = getDistributionSuccessRate(distribution, (totalDamage) => passesStrictSurviveTotalDamage(totalDamage, defCurrentHp));
         const passed = passesGuaranteedSurviveRate(successRate);
         const [minTotalDamage, worstTotalDamage] = getDistributionRange(distribution);
@@ -801,7 +899,13 @@ export function solveSpreads({
         const [minDmg, maxDmg] = result.range();
         const { maxHp: defMaxHp, currentHp: defCurrentHpRaw } = getEffectiveHpForState(prepared.threat, prepared.tState, prepared.tState.evs, prepared.threatLevel);
         const defCurrentHp = Math.max(1, defCurrentHpRaw);
-        const recovery = recoveryPerTurn(prepared.tState, defMaxHp);
+        const recovery = recoveryPerTurn(
+          prepared.threat,
+          prepared.tState,
+          defMaxHp,
+          prepared.constraintFieldConditions,
+          'enemySide'
+        );
         const rolls = getDamageRolls(result.damage);
         const distribution = getRepeatedHitDistribution(rolls, koHitsRequired(prepared.c.achieve), recovery);
         const successRate = getDistributionSuccessRate(distribution, (totalDamage) => passesGuaranteedKoTotalDamage(totalDamage, defCurrentHp));
