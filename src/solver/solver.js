@@ -61,7 +61,13 @@ const SPEED_WEATHER_ABILITIES = {
 const SPEED_TERRAIN_ABILITIES = {
   surgesurfer: ['electric'],
 };
-const PASS_SUCCESS_RATE_THRESHOLD = 0.99;
+const DAMAGE_REDUCTION_BERRIES = new Set([
+  'babiriberry', 'chartiberry', 'chilanberry', 'chopleberry', 'cobaberry',
+  'colburberry', 'habanberry', 'kasibberry', 'kebiaberry', 'occaberry',
+  'passhoberry', 'payapaberry', 'rindoberry', 'roseliberry', 'shucaberry',
+  'tangaberry', 'wacanberry', 'yacheberry',
+]);
+const GUARANTEED_SUCCESS_RATE = 1;
 
 function actualEvs(evs = EMPTY_EVS) {
   return { ...EMPTY_EVS, ...evs };
@@ -77,6 +83,10 @@ function normId(value) {
 
 function hasItem(fullState, itemName) {
   return normId(fullState?.item?.name ?? '') === normId(itemName);
+}
+
+function hasDamageReductionBerry(fullState) {
+  return DAMAGE_REDUCTION_BERRIES.has(normId(fullState?.item?.name ?? ''));
 }
 
 // ─── Stat formulas ───────────────────────────────────────────────────────────
@@ -259,7 +269,8 @@ function findMinActualEv(startEv, maxEv, pred) {
 // Returns {maxDmg, defMaxHp, result} for given defender testEvs
 function calcIncoming(threatSpeciesName, threatFullState, threatBoosts,
                       userSpeciesName, userFullState, testEvs,
-                      moveName, isCrit, fc, threatLevel = 100, userLevel = 100) {
+                      moveName, isCrit, fc, threatLevel = 100, userLevel = 100,
+                      moveOptions = {}) {
   const atk = new Pokemon(GEN, threatSpeciesName, {
     item:    threatFullState.item?.name   ?? undefined,
     nature:  threatFullState.nature       ?? 'Hardy',
@@ -283,7 +294,9 @@ function calcIncoming(threatSpeciesName, threatFullState, threatBoosts,
     curHP:   userFullState.currentHp     ?? undefined,
     level:   userLevel,
   });
-  const move = new Move(GEN, moveName, { isCrit: !!isCrit });
+  const move = new Move(GEN, moveName, moveOptions.singleTarget
+    ? { isCrit: !!isCrit, overrides: { target: 'normal' } }
+    : { isCrit: !!isCrit });
   const field = makeField(fc, 'enemySide', 'userSide');
   return calculate(GEN, atk, def, move, field);
 }
@@ -291,7 +304,8 @@ function calcIncoming(threatSpeciesName, threatFullState, threatBoosts,
 // ─── KO constraint check ─────────────────────────────────────────────────────
 function calcOutgoing(userSpeciesName, userFullState, userBoosts, testEvs,
                       threatSpeciesName, threatFullState,
-                      moveName, isCrit, fc, userLevel = 100, threatLevel = 100) {
+                      moveName, isCrit, fc, userLevel = 100, threatLevel = 100,
+                      moveOptions = {}) {
   const atk = new Pokemon(GEN, userSpeciesName, {
     item:    userFullState.item?.name    ?? undefined,
     nature:  userFullState.nature        ?? 'Hardy',
@@ -315,7 +329,9 @@ function calcOutgoing(userSpeciesName, userFullState, userBoosts, testEvs,
     curHP:   threatFullState.currentHp    ?? undefined,
     level:   threatLevel,
   });
-  const move = new Move(GEN, moveName, { isCrit: !!isCrit });
+  const move = new Move(GEN, moveName, moveOptions.singleTarget
+    ? { isCrit: !!isCrit, overrides: { target: 'normal' } }
+    : { isCrit: !!isCrit });
   const field = makeField(fc, 'userSide', 'enemySide');
   return calculate(GEN, atk, def, move, field);
 }
@@ -405,11 +421,19 @@ function getDamageRolls(damage) {
 }
 
 function getRepeatedHitDistribution(rolls, hits, recoveryPerTurn = 0) {
+  return getRepeatedHitDistributionForRollGroups(
+    Array.from({ length: hits }, () => rolls),
+    recoveryPerTurn
+  );
+}
+
+function getRepeatedHitDistributionForRollGroups(rollGroups, recoveryPerTurn = 0) {
   let distribution = new Map([[0, 1]]);
 
-  for (let hit = 0; hit < hits; hit += 1) {
+  for (let hit = 0; hit < rollGroups.length; hit += 1) {
     const next = new Map();
     const recoveryBeforeHit = hit === 0 ? 0 : recoveryPerTurn;
+    const rolls = rollGroups[hit] ?? [0];
 
     for (const [total, count] of distribution.entries()) {
       for (const roll of rolls) {
@@ -422,6 +446,21 @@ function getRepeatedHitDistribution(rolls, hits, recoveryPerTurn = 0) {
   }
 
   return distribution;
+}
+
+function getDistributionRange(distribution) {
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+
+  distribution.forEach((_, totalDamage) => {
+    if (totalDamage < min) min = totalDamage;
+    if (totalDamage > max) max = totalDamage;
+  });
+
+  return [
+    min === Number.POSITIVE_INFINITY ? 0 : min,
+    max === Number.NEGATIVE_INFINITY ? 0 : max,
+  ];
 }
 
 function getDistributionSuccessRate(distribution, predicate) {
@@ -457,11 +496,11 @@ function getKoSuccessRate(mode, damage, maxHp, recovery) {
 }
 
 export function passesGuaranteedKoRate(successRate) {
-  return successRate > PASS_SUCCESS_RATE_THRESHOLD;
+  return successRate >= GUARANTEED_SUCCESS_RATE;
 }
 
 export function passesGuaranteedSurviveRate(successRate) {
-  return successRate > PASS_SUCCESS_RATE_THRESHOLD;
+  return successRate >= GUARANTEED_SUCCESS_RATE;
 }
 
 export function passesOutspeedComparison(mySpe, theirSpe) {
@@ -621,6 +660,7 @@ export function solveSpreads({
         offKey: moveData.category === 'Special' ? 'spa' : 'atk',
         uBoosts: userBoostsForKO(userFullState, constraint),
         isCrit: userFullState.crits?.[constraint.userMoveIndex] || false,
+        singleTargetDamage: !!constraint.singleTargetDamage,
       };
     }
 
@@ -636,6 +676,7 @@ export function solveSpreads({
         defKey: moveData.category === 'Special' ? 'spd' : 'def',
         tBoosts: threatBoostsAfterIntimidate(tState, constraint.intimidateOn),
         isCrit: tState.crits?.[constraint.enemyMoveIndex] || false,
+        singleTargetDamage: !!constraint.singleTargetDamage,
       };
     }
 
@@ -644,6 +685,44 @@ export function solveSpreads({
     }
 
     return base;
+  }
+
+  function buildSurviveDistribution(prepared, evs, firstResult, recovery) {
+    const hits = surviveHitsRequired(prepared.c.survive);
+    const firstRolls = getDamageRolls(firstResult.damage);
+    const rollGroups = [firstRolls];
+
+    if (hits > 1) {
+      let laterRolls = firstRolls;
+
+      if (hasDamageReductionBerry(userFullState)) {
+        const userStateAfterBerry = { ...userFullState, item: null };
+        const laterResult = calcIncoming(
+          prepared.threat.name,
+          prepared.tState,
+          prepared.tBoosts,
+          userPokemon.name,
+          userStateAfterBerry,
+          evs,
+          prepared.moveName,
+          prepared.isCrit,
+          prepared.constraintFieldConditions,
+          prepared.threatLevel,
+          userLevel,
+          { singleTarget: prepared.singleTargetDamage }
+        );
+        const candidateRolls = getDamageRolls(laterResult.damage);
+        const [, firstMax] = firstResult.range();
+        const [, laterMax] = laterResult.range();
+        if (laterMax > firstMax) laterRolls = candidateRolls;
+      }
+
+      for (let hit = 1; hit < hits; hit += 1) {
+        rollGroups.push(laterRolls);
+      }
+    }
+
+    return getRepeatedHitDistributionForRollGroups(rollGroups, recovery);
   }
 
   function evaluatePreparedConstraint(prepared, evs) {
@@ -673,26 +752,29 @@ export function solveSpreads({
           prepared.isCrit,
           prepared.constraintFieldConditions,
           prepared.threatLevel,
-          userLevel
+          userLevel,
+          { singleTarget: prepared.singleTargetDamage }
         );
         const [minDmg, maxDmg] = result.range();
         const { maxHp: defMaxHp, currentHp: defCurrentHpRaw } = getEffectiveHpForState(userPokemon, userFullState, evs, userLevel);
         const defCurrentHp = Math.max(1, defCurrentHpRaw);
         const recovery = recoveryPerTurn(userFullState, defMaxHp);
-        const rolls = getDamageRolls(result.damage);
-        const distribution = getRepeatedHitDistribution(rolls, surviveHitsRequired(prepared.c.survive), recovery);
+        const distribution = buildSurviveDistribution(prepared, evs, result, recovery);
         const successRate = getDistributionSuccessRate(distribution, (totalDamage) => passesStrictSurviveTotalDamage(totalDamage, defCurrentHp));
         const passed = passesGuaranteedSurviveRate(successRate);
-        let worstTotalDamage = Number.NEGATIVE_INFINITY;
-        distribution.forEach((_, totalDamage) => {
-          if (totalDamage > worstTotalDamage) worstTotalDamage = totalDamage;
-        });
-        const pMin = (minDmg / defCurrentHp * 100).toFixed(1);
-        const pMax = (maxDmg / defCurrentHp * 100).toFixed(1);
+        const [minTotalDamage, worstTotalDamage] = getDistributionRange(distribution);
+        const displayMin = surviveHitsRequired(prepared.c.survive) > 1 ? minTotalDamage : minDmg;
+        const displayMax = surviveHitsRequired(prepared.c.survive) > 1 ? worstTotalDamage : maxDmg;
+        const pMin = (displayMin / defCurrentHp * 100).toFixed(1);
+        const pMax = (displayMax / defCurrentHp * 100).toFixed(1);
+        const hitCount = surviveHitsRequired(prepared.c.survive);
+        const desc = hitCount > 1
+          ? `${result.desc()} | ${hitCount} hits total: ${displayMin}-${displayMax} (${pMin} - ${pMax}%)`
+          : result.desc();
         return {
           c: prepared.c,
           passed,
-          desc: result.desc(),
+          desc,
           range: `${pMin}% - ${pMax}%`,
           threat: prepared.threat,
           successRate,
@@ -713,7 +795,8 @@ export function solveSpreads({
           prepared.isCrit,
           prepared.constraintFieldConditions,
           userLevel,
-          prepared.threatLevel
+          prepared.threatLevel,
+          { singleTarget: prepared.singleTargetDamage }
         );
         const [minDmg, maxDmg] = result.range();
         const { maxHp: defMaxHp, currentHp: defCurrentHpRaw } = getEffectiveHpForState(prepared.threat, prepared.tState, prepared.tState.evs, prepared.threatLevel);

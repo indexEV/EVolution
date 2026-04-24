@@ -148,10 +148,11 @@ function createDebugShieldConstraint({ customThreat = null, moveIndex, survive, 
     theirTailwind: false,
     yourScarf: false,
     theirScarf: false,
+    singleTargetDamage: false,
   };
 }
 
-function createDebugSwordConstraint({ customThreat = null, moveIndex, achieve }) {
+function createDebugSwordConstraint({ customThreat = null, moveIndex, achieve, singleTargetDamage = false }) {
   return {
     id: crypto.randomUUID(),
     type: 'sword',
@@ -173,6 +174,7 @@ function createDebugSwordConstraint({ customThreat = null, moveIndex, achieve })
     theirTailwind: false,
     yourScarf: false,
     theirScarf: false,
+    singleTargetDamage,
   };
 }
 
@@ -553,7 +555,12 @@ export default function App() {
     setSavedThreats([sinistchaThreat]);
     setConstraints([
       createDebugShieldConstraint({ moveIndex: incineroarMoveIndex, survive: '2hko', intimidateOn: true }),
-      createDebugSwordConstraint({ customThreat: sinistchaThreat, moveIndex: abomasnowMoveIndex, achieve: '1hko' }),
+      createDebugSwordConstraint({
+        customThreat: sinistchaThreat,
+        moveIndex: abomasnowMoveIndex,
+        achieve: '1hko',
+        singleTargetDamage: true,
+      }),
     ]);
     setStep7CalcToken(0);
     setStep7IsCalculating(false);
