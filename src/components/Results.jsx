@@ -216,27 +216,30 @@ function getAbilitySummary(fullState, fieldConditions, speedOnly = false) {
   const terrain = fieldConditions?.field?.terrain;
   const itemId = normId(fullState?.item?.name);
   const status = fullState?.status ?? null;
+  const paradoxActive =
+    (abilityId === 'protosynthesis' && (weather === 'sun' || weather === 'harshSunshine' || itemId === 'boosterenergy')) ||
+    (abilityId === 'quarkdrive' && (terrain === 'electric' || itemId === 'boosterenergy'));
 
   if (abilityId === 'guts' && status) return 'Guts active';
   if (abilityId === 'quickfeet' && status) return 'Quick Feet active';
   if (abilityId === 'poisonheal' && ['psn', 'tox'].includes(status)) return 'Poison Heal';
-  if (abilityId === 'protosynthesis') {
+  if (abilityId === 'protosynthesis' && paradoxActive) {
     if (fullState?.boostedStat === 'atk') return 'Protosynthesis (Attack)';
     if (fullState?.boostedStat === 'def') return 'Protosynthesis (Defense)';
     if (fullState?.boostedStat === 'spa') return 'Protosynthesis (Sp. Atk)';
     if (fullState?.boostedStat === 'spd') return 'Protosynthesis (Sp. Def)';
     if (fullState?.boostedStat === 'spe') return 'Protosynthesis (Speed)';
-    if (fullState?.boostedStat === 'auto' && (weather === 'sun' || weather === 'harshSunshine' || itemId === 'boosterenergy')) {
+    if (fullState?.boostedStat === 'auto') {
       return 'Protosynthesis';
     }
   }
-  if (abilityId === 'quarkdrive') {
+  if (abilityId === 'quarkdrive' && paradoxActive) {
     if (fullState?.boostedStat === 'atk') return 'Quark Drive (Attack)';
     if (fullState?.boostedStat === 'def') return 'Quark Drive (Defense)';
     if (fullState?.boostedStat === 'spa') return 'Quark Drive (Sp. Atk)';
     if (fullState?.boostedStat === 'spd') return 'Quark Drive (Sp. Def)';
     if (fullState?.boostedStat === 'spe') return 'Quark Drive (Speed)';
-    if (fullState?.boostedStat === 'auto' && (terrain === 'electric' || itemId === 'boosterenergy')) {
+    if (fullState?.boostedStat === 'auto') {
       return 'Quark Drive';
     }
   }

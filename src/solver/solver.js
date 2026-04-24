@@ -61,6 +61,7 @@ const SPEED_WEATHER_ABILITIES = {
 const SPEED_TERRAIN_ABILITIES = {
   surgesurfer: ['electric'],
 };
+const PASS_SUCCESS_RATE_THRESHOLD = 0.99;
 
 function actualEvs(evs = EMPTY_EVS) {
   return { ...EMPTY_EVS, ...evs };
@@ -98,21 +99,31 @@ function getEffectiveHpForState(pokemon, fullState, evOverride, level = 100) {
   return { maxHp, currentHp };
 }
 
+function isParadoxAbilityActiveForState(fullState, fieldConditions = null) {
+  const abilityId = normId(fullState?.ability ?? '');
+  if (abilityId !== 'protosynthesis' && abilityId !== 'quarkdrive') return false;
+
+  const boostedStat = fullState?.boostedStat ?? undefined;
+  if (!boostedStat || boostedStat === 'disabled') return false;
+
+  const itemId = normId(fullState?.item?.name ?? '');
+  const weather = fieldConditions?.field?.weather ?? null;
+  const terrain = fieldConditions?.field?.terrain ?? null;
+
+  return (
+    (abilityId === 'protosynthesis' && (weather === 'sun' || weather === 'harshSunshine' || itemId === 'boosterenergy')) ||
+    (abilityId === 'quarkdrive' && (terrain === 'electric' || itemId === 'boosterenergy'))
+  );
+}
+
 function getParadoxBoostedStatForState(pokemon, fullState, fieldConditions = null, evOverrides = {}, level = 100) {
   const abilityId = normId(fullState?.ability ?? '');
   if (abilityId !== 'protosynthesis' && abilityId !== 'quarkdrive') return null;
 
   const boostedStat = fullState?.boostedStat ?? undefined;
   if (!boostedStat) return null;
+  if (!isParadoxAbilityActiveForState(fullState, fieldConditions)) return null;
   if (boostedStat !== 'auto') return boostedStat;
-
-  const itemId = normId(fullState?.item?.name ?? '');
-  const weather = fieldConditions?.field?.weather ?? null;
-  const terrain = fieldConditions?.field?.terrain ?? null;
-  const active =
-    (abilityId === 'protosynthesis' && (weather === 'sun' || weather === 'harshSunshine' || itemId === 'boosterenergy')) ||
-    (abilityId === 'quarkdrive' && (terrain === 'electric' || itemId === 'boosterenergy'));
-  if (!active) return null;
 
   const nature = fullState?.nature ?? 'Hardy';
   const evs = { ...(fullState?.evs ?? {}), ...evOverrides };
@@ -126,6 +137,11 @@ function getParadoxBoostedStatForState(pokemon, fullState, fieldConditions = nul
   }
 
   return bestStat;
+}
+
+function getResolvedBoostedStatForCalc(speciesName, fullState, fieldConditions = null, evOverride = undefined, level = 100) {
+  const species = GEN.species.get(speciesName);
+  return getParadoxBoostedStatForState(species, fullState, fieldConditions, evOverride, level) ?? undefined;
 }
 
 function getAbilitySpeedMultiplier(fullState, fieldConditions) {
@@ -250,7 +266,7 @@ function calcIncoming(threatSpeciesName, threatFullState, threatBoosts,
     evs:     threatFullState.evs          ?? {},
     ivs:     threatFullState.ivs          ?? {},
     ability: threatFullState.ability      ?? undefined,
-    boostedStat: threatFullState.boostedStat ?? undefined,
+    boostedStat: getResolvedBoostedStatForCalc(threatSpeciesName, threatFullState, fc, threatFullState.evs, threatLevel),
     boosts:  threatBoosts,
     curHP:   threatFullState.currentHp    ?? undefined,
     level:   threatLevel,
@@ -261,7 +277,7 @@ function calcIncoming(threatSpeciesName, threatFullState, threatBoosts,
     evs:     testEvs,
     ivs:     userFullState.ivs           ?? {},
     ability: userFullState.ability       ?? undefined,
-    boostedStat: userFullState.boostedStat ?? undefined,
+    boostedStat: getResolvedBoostedStatForCalc(userSpeciesName, userFullState, fc, testEvs, userLevel),
     status:  STATUS_MAP[userFullState.status] ?? undefined,
     boosts:  userFullState.stages        ?? {},
     curHP:   userFullState.currentHp     ?? undefined,
@@ -282,7 +298,7 @@ function calcOutgoing(userSpeciesName, userFullState, userBoosts, testEvs,
     evs:     testEvs,
     ivs:     userFullState.ivs           ?? {},
     ability: userFullState.ability       ?? undefined,
-    boostedStat: userFullState.boostedStat ?? undefined,
+    boostedStat: getResolvedBoostedStatForCalc(userSpeciesName, userFullState, fc, testEvs, userLevel),
     status:  STATUS_MAP[userFullState.status] ?? undefined,
     boosts:  userBoosts,
     curHP:   userFullState.currentHp     ?? undefined,
@@ -294,7 +310,7 @@ function calcOutgoing(userSpeciesName, userFullState, userBoosts, testEvs,
     evs:     threatFullState.evs          ?? {},
     ivs:     threatFullState.ivs          ?? {},
     ability: threatFullState.ability      ?? undefined,
-    boostedStat: threatFullState.boostedStat ?? undefined,
+    boostedStat: getResolvedBoostedStatForCalc(threatSpeciesName, threatFullState, fc, threatFullState.evs, threatLevel),
     boosts:  threatFullState.stages       ?? {},
     curHP:   threatFullState.currentHp    ?? undefined,
     level:   threatLevel,
@@ -441,11 +457,11 @@ function getKoSuccessRate(mode, damage, maxHp, recovery) {
 }
 
 export function passesGuaranteedKoRate(successRate) {
-  return successRate >= 1;
+  return successRate > PASS_SUCCESS_RATE_THRESHOLD;
 }
 
 export function passesGuaranteedSurviveRate(successRate) {
-  return successRate >= 1;
+  return successRate > PASS_SUCCESS_RATE_THRESHOLD;
 }
 
 export function passesOutspeedComparison(mySpe, theirSpe) {
