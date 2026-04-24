@@ -49,44 +49,30 @@ const STEP_COLORS = [
 
 const STEP_COUNT = STEP_TITLES.length;
 const DEV_DEBUG_SETS_COMMAND = '/dev debug sets';
-const DEBUG_USER_SET = `Flutter Mane @ Psychic Seed
-Ability: Protosynthesis
-Shiny: Yes
-Tera Type: Water
-EVs: 100 HP / 84 Def / 172 SpA / 152 SpD
-Modest Nature
-IVs: 0 Atk
-- Moonblast
-- Shadow Ball
-- Taunt
-- Charm`;
-const DEBUG_IRON_HANDS_SET = `Iron Hands
-Ability: Quark Drive
-Tera Type: Water
-EVs: 136 Atk / 164 Spe
-Adamant Nature
-- Fake Out
-- Wild Charge
-- Drain Punch
-- Ice Punch`;
-const DEBUG_INCINEROAR_SET = `Incineroar @ Safety Goggles
+const DEBUG_USER_SET = `Abomasnow (M) @ Occa Berry
+Ability: Snow Warning
+Hardy Nature
+- Body Press
+- Blizzard`;
+const DEBUG_INCINEROAR_SET = `Incineroar @ Heavy-Duty Boots
 Ability: Intimidate
 Tera Type: Ghost
-EVs: 228 HP / 28 Atk / 92 Def / 76 SpD / 84 Spe
+EVs: 252 HP / 96 Def / 160 SpD
 Careful Nature
 - Fake Out
-- Knock Off
 - Flare Blitz
+- Knock Off
 - Parting Shot`;
-const DEBUG_ENEMY_FLUTTER_SET = `Flutter Mane @ Booster Energy
-Ability: Protosynthesis
-Tera Type: Stellar
-EVs: 4 HP / 108 Def / 140 SpA / 4 SpD / 252 Spe
-Timid Nature
-- Moonblast
+const DEBUG_SINISTCHA_SET = `Sinistcha @ Sitrus Berry
+Ability: Hospitality
+Tera Type: Water
+EVs: 252 HP / 252 Def / 4 SpA
+Quiet Nature
+IVs: 0 Atk / 0 Spe
+- Matcha Gotcha
 - Shadow Ball
-- Mystical Fire
-- Power Gem`;
+- Trick Room
+- Rage Powder`;
 const DEFAULT_FIELD_SIDE = {
   stealthRock: false,
   spikes: 0,
@@ -115,15 +101,15 @@ const cloneValue = (value) => structuredClone(value);
 function createDebugFieldConditions() {
   return {
     field: {
-      format: 'singles',
+      format: 'doubles',
       level: 100,
-      terrain: 'psychic',
-      weather: 'sun',
+      terrain: null,
+      weather: 'snow',
       magicRoom: false,
       wonderRoom: false,
       gravity: false,
     },
-    userSide: { ...DEFAULT_FIELD_SIDE },
+    userSide: { ...DEFAULT_FIELD_SIDE, friendGuard: true },
     enemySide: { ...DEFAULT_FIELD_SIDE },
   };
 }
@@ -140,7 +126,7 @@ function findMoveIndex(fullState, moveName) {
   return fullState?.moves?.findIndex((move) => move?.name === moveName) ?? -1;
 }
 
-function createDebugShieldConstraint({ customThreat = null, moveIndex, survive }) {
+function createDebugShieldConstraint({ customThreat = null, moveIndex, survive, intimidateOn = false }) {
   return {
     id: crypto.randomUUID(),
     type: 'shield',
@@ -148,10 +134,35 @@ function createDebugShieldConstraint({ customThreat = null, moveIndex, survive }
     customThreat,
     enemyMoveIndex: moveIndex,
     survive,
-    intimidateOn: false,
+    intimidateOn,
     defiantOn: false,
     userMoveIndex: 0,
     achieve: '1hko',
+    intimidateEnemy: false,
+    defiantSword: false,
+    yourExtraStage: 0,
+    theirExtraStage: 0,
+    yourIcyWind: false,
+    theirIcyWind: false,
+    yourTailwind: false,
+    theirTailwind: false,
+    yourScarf: false,
+    theirScarf: false,
+  };
+}
+
+function createDebugSwordConstraint({ customThreat = null, moveIndex, achieve }) {
+  return {
+    id: crypto.randomUUID(),
+    type: 'sword',
+    opponentSource: customThreat ? 'custom' : 'existing',
+    customThreat,
+    enemyMoveIndex: 0,
+    survive: '1hko',
+    intimidateOn: false,
+    defiantOn: false,
+    userMoveIndex: moveIndex,
+    achieve,
     intimidateEnemy: false,
     defiantSword: false,
     yourExtraStage: 0,
@@ -509,52 +520,40 @@ export default function App() {
   const seedDebugScenario = async () => {
     const baseFieldConditions = createDebugFieldConditions();
 
-    const userSnapshot = await loadSelectorSet(userSelectorRef, DEBUG_USER_SET, { boostedStat: 'spa' });
-    const ironHandsSnapshot = await loadSelectorSet(enemySelectorRef, DEBUG_IRON_HANDS_SET);
+    const userSnapshot = await loadSelectorSet(userSelectorRef, DEBUG_USER_SET);
     const incineroarSnapshot = await loadSelectorSet(enemySelectorRef, DEBUG_INCINEROAR_SET);
-    const enemyFlutterSnapshot = await loadSelectorSet(enemySelectorRef, DEBUG_ENEMY_FLUTTER_SET);
+    const sinistchaSnapshot = await loadSelectorSet(enemySelectorRef, DEBUG_SINISTCHA_SET);
 
-    const ironHandsMoveIndex = findMoveIndex(ironHandsSnapshot.fullState, 'Wild Charge');
     const incineroarMoveIndex = findMoveIndex(incineroarSnapshot.fullState, 'Flare Blitz');
-    const enemyFlutterMoveIndex = findMoveIndex(enemyFlutterSnapshot.fullState, 'Shadow Ball');
+    const abomasnowMoveIndex = findMoveIndex(userSnapshot.fullState, 'Blizzard');
 
-    if (ironHandsMoveIndex < 0 || incineroarMoveIndex < 0 || enemyFlutterMoveIndex < 0) {
+    if (incineroarMoveIndex < 0 || abomasnowMoveIndex < 0) {
       throw new Error('Could not locate one or more required debug moves after loading the scenario.');
     }
 
-    setEnemyPokemon(ironHandsSnapshot.pokemon);
+    setEnemyPokemon(incineroarSnapshot.pokemon);
     await waitForDebugHydration();
-    enemySelectorRef.current?.setFullState(cloneValue(ironHandsSnapshot.fullState));
+    enemySelectorRef.current?.setFullState(cloneValue(incineroarSnapshot.fullState));
     await waitForDebugHydration();
 
-    const incineroarFieldConditions = cloneFieldConditions(baseFieldConditions);
-    incineroarFieldConditions.field.weather = null;
-
-    const incineroarThreat = {
+    const sinistchaThreat = {
       id: crypto.randomUUID(),
-      pokemon: incineroarSnapshot.pokemon,
-      fullState: cloneValue(incineroarSnapshot.fullState),
-      fieldConditions: incineroarFieldConditions,
-    };
-    const enemyFlutterThreat = {
-      id: crypto.randomUUID(),
-      pokemon: enemyFlutterSnapshot.pokemon,
-      fullState: cloneValue(enemyFlutterSnapshot.fullState),
+      pokemon: sinistchaSnapshot.pokemon,
+      fullState: cloneValue(sinistchaSnapshot.fullState),
       fieldConditions: cloneFieldConditions(baseFieldConditions),
     };
 
     setUserPokemon(userSnapshot.pokemon);
-    setEnemyPokemon(ironHandsSnapshot.pokemon);
+    setEnemyPokemon(incineroarSnapshot.pokemon);
     setUserLevel(100);
     setEnemyLevel(100);
     setUserFullState(cloneValue(userSnapshot.fullState));
-    setEnemyFullState(cloneValue(ironHandsSnapshot.fullState));
+    setEnemyFullState(cloneValue(incineroarSnapshot.fullState));
     setFieldConditions(baseFieldConditions);
-    setSavedThreats([incineroarThreat, enemyFlutterThreat]);
+    setSavedThreats([sinistchaThreat]);
     setConstraints([
-      createDebugShieldConstraint({ moveIndex: ironHandsMoveIndex, survive: '1hko' }),
-      createDebugShieldConstraint({ customThreat: incineroarThreat, moveIndex: incineroarMoveIndex, survive: '1hko' }),
-      createDebugShieldConstraint({ customThreat: enemyFlutterThreat, moveIndex: enemyFlutterMoveIndex, survive: '2hko' }),
+      createDebugShieldConstraint({ moveIndex: incineroarMoveIndex, survive: '2hko', intimidateOn: true }),
+      createDebugSwordConstraint({ customThreat: sinistchaThreat, moveIndex: abomasnowMoveIndex, achieve: '1hko' }),
     ]);
     setStep7CalcToken(0);
     setStep7IsCalculating(false);
