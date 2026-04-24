@@ -478,16 +478,22 @@ body::-webkit-scrollbar {
 /* ── Paste section ── */
 .paste-section {
   margin-top: 0;
-  padding: 0;
+  padding: 20px 24px 22px;
 }
 
 .paste-input-shell {
   width: 100%;
   box-sizing: border-box;
   padding: 0;
-  background: none;
-  border: none;
-  box-shadow: none;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.07);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-top-color: rgba(255,255,255,0.2);
+  box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.13);
+  overflow: hidden;
+  transition: all 0.2s;
 }
 
 .paste-input {
@@ -496,14 +502,24 @@ body::-webkit-scrollbar {
   resize: none;
   overflow: hidden;
   line-height: 1.6;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
-.paste-input-shell.error .paste-input {
+.paste-input-shell:focus-within {
+  background: rgba(255,255,255,0.1);
+  border-top-color: rgba(255,255,255,0.3);
+}
+
+.paste-input-shell.error {
   border-color: rgba(255,120,120,0.18);
   border-top-color: rgba(255,120,120,0.36);
 }
 
-.paste-input-shell.error .paste-input:focus {
+.paste-input-shell.error:focus-within {
   border-top-color: rgba(255,140,140,0.48);
 }
 
