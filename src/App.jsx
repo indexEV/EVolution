@@ -48,6 +48,135 @@ const STEP_COLORS = [
 ];
 
 const STEP_COUNT = STEP_TITLES.length;
+const DEV_DEBUG_SETS_COMMAND = '/dev debug sets';
+const DEBUG_USER_SET = `Abomasnow (M) @ Occa Berry
+Ability: Snow Warning
+Hardy Nature
+- Body Press
+- Blizzard`;
+const DEBUG_INCINEROAR_SET = `Incineroar @ Heavy-Duty Boots
+Ability: Intimidate
+Tera Type: Ghost
+EVs: 252 HP / 96 Def / 160 SpD
+Careful Nature
+- Fake Out
+- Flare Blitz
+- Knock Off
+- Parting Shot`;
+const DEBUG_SINISTCHA_SET = `Sinistcha @ Sitrus Berry
+Ability: Hospitality
+Tera Type: Water
+EVs: 252 HP / 252 Def / 4 SpA
+Quiet Nature
+IVs: 0 Atk / 0 Spe
+- Matcha Gotcha
+- Shadow Ball
+- Trick Room
+- Rage Powder`;
+const DEFAULT_FIELD_SIDE = {
+  stealthRock: false,
+  spikes: 0,
+  toxicSpikes: 0,
+  reflect: false,
+  lightScreen: false,
+  auroraVeil: false,
+  protect: false,
+  leechSeed: false,
+  saltCure: false,
+  foresight: false,
+  helpingHand: false,
+  tailwind: false,
+  flowerGift: false,
+  powerTrick: false,
+  steelySpirit: false,
+  friendGuard: false,
+  battery: false,
+  powerSpot: false,
+  switchingOut: false,
+  justSwitchedIn: false,
+};
+
+const cloneValue = (value) => structuredClone(value);
+
+function createDebugFieldConditions() {
+  return {
+    field: {
+      format: 'singles',
+      level: 100,
+      terrain: null,
+      weather: 'snow',
+      magicRoom: false,
+      wonderRoom: false,
+      gravity: false,
+    },
+    userSide: { ...DEFAULT_FIELD_SIDE, friendGuard: true },
+    enemySide: { ...DEFAULT_FIELD_SIDE },
+  };
+}
+
+function cloneFieldConditions(value) {
+  return {
+    field: { ...(value?.field ?? {}) },
+    userSide: { ...(value?.userSide ?? {}) },
+    enemySide: { ...(value?.enemySide ?? {}) },
+  };
+}
+
+function findMoveIndex(fullState, moveName) {
+  return fullState?.moves?.findIndex((move) => move?.name === moveName) ?? -1;
+}
+
+function createDebugShieldConstraint({ customThreat = null, moveIndex, survive, intimidateOn = false }) {
+  return {
+    id: crypto.randomUUID(),
+    type: 'shield',
+    opponentSource: customThreat ? 'custom' : 'existing',
+    customThreat,
+    enemyMoveIndex: moveIndex,
+    survive,
+    intimidateOn,
+    defiantOn: false,
+    userMoveIndex: 0,
+    achieve: '1hko',
+    intimidateEnemy: false,
+    defiantSword: false,
+    yourExtraStage: 0,
+    theirExtraStage: 0,
+    yourIcyWind: false,
+    theirIcyWind: false,
+    yourTailwind: false,
+    theirTailwind: false,
+    yourScarf: false,
+    theirScarf: false,
+    singleTargetDamage: false,
+  };
+}
+
+function createDebugSwordConstraint({ customThreat = null, moveIndex, achieve, singleTargetDamage = false }) {
+  return {
+    id: crypto.randomUUID(),
+    type: 'sword',
+    opponentSource: customThreat ? 'custom' : 'existing',
+    customThreat,
+    enemyMoveIndex: 0,
+    survive: '1hko',
+    intimidateOn: false,
+    defiantOn: false,
+    userMoveIndex: moveIndex,
+    achieve,
+    intimidateEnemy: false,
+    defiantSword: false,
+    yourExtraStage: 0,
+    theirExtraStage: 0,
+    yourIcyWind: false,
+    theirIcyWind: false,
+    yourTailwind: false,
+    theirTailwind: false,
+    yourScarf: false,
+    theirScarf: false,
+    singleTargetDamage,
+  };
+}
 
 const hexToRgb = (hex) => {
   const normalized = hex.replace('#', '');
@@ -364,6 +493,79 @@ export default function App() {
   const userSelectorRef = useRef(null);
   const enemySelectorRef = useRef(null);
   const pairRef = useRef(null);
+  const waitForDebugHydration = (ms = 100) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const loadSelectorSet = async (selectorRef, text, statePatch = null) => {
+    const result = selectorRef.current?.loadShowdownSet(text);
+    if (!result?.success) {
+      throw new Error(result?.error || 'Could not load debug set.');
+    }
+
+    await waitForDebugHydration();
+
+    if (statePatch) {
+      const currentState = selectorRef.current?.getFullState();
+      if (!currentState) throw new Error('Could not read selector state after loading debug set.');
+      selectorRef.current?.setFullState({ ...currentState, ...statePatch });
+      await waitForDebugHydration();
+    }
+
+    const fullState = selectorRef.current?.getFullState();
+    if (!fullState) throw new Error('Could not snapshot selector state for debug set.');
+
+    return {
+      pokemon: result.pokemon,
+      fullState: cloneValue(fullState),
+    };
+  };
+
+  const seedDebugScenario = async () => {
+    const baseFieldConditions = createDebugFieldConditions();
+
+    const userSnapshot = await loadSelectorSet(userSelectorRef, DEBUG_USER_SET);
+    const incineroarSnapshot = await loadSelectorSet(enemySelectorRef, DEBUG_INCINEROAR_SET);
+    const sinistchaSnapshot = await loadSelectorSet(enemySelectorRef, DEBUG_SINISTCHA_SET);
+
+    const incineroarMoveIndex = findMoveIndex(incineroarSnapshot.fullState, 'Flare Blitz');
+    const abomasnowMoveIndex = findMoveIndex(userSnapshot.fullState, 'Blizzard');
+
+    if (incineroarMoveIndex < 0 || abomasnowMoveIndex < 0) {
+      throw new Error('Could not locate one or more required debug moves after loading the scenario.');
+    }
+
+    setEnemyPokemon(incineroarSnapshot.pokemon);
+    await waitForDebugHydration();
+    enemySelectorRef.current?.setFullState(cloneValue(incineroarSnapshot.fullState));
+    await waitForDebugHydration();
+
+    const sinistchaThreat = {
+      id: crypto.randomUUID(),
+      pokemon: sinistchaSnapshot.pokemon,
+      fullState: cloneValue(sinistchaSnapshot.fullState),
+      fieldConditions: cloneFieldConditions(baseFieldConditions),
+    };
+
+    setUserPokemon(userSnapshot.pokemon);
+    setEnemyPokemon(incineroarSnapshot.pokemon);
+    setUserLevel(100);
+    setEnemyLevel(100);
+    setUserFullState(cloneValue(userSnapshot.fullState));
+    setEnemyFullState(cloneValue(incineroarSnapshot.fullState));
+    setFieldConditions(baseFieldConditions);
+    setSavedThreats([sinistchaThreat]);
+    setConstraints([
+      createDebugShieldConstraint({ moveIndex: incineroarMoveIndex, survive: '2hko', intimidateOn: true }),
+      createDebugSwordConstraint({
+        customThreat: sinistchaThreat,
+        moveIndex: abomasnowMoveIndex,
+        achieve: '1hko',
+      }),
+    ]);
+    setStep7CalcToken(0);
+    setStep7IsCalculating(false);
+    setMaxUnlockedStep(STEP_COUNT);
+    setStep(STEP_COUNT);
+  };
 
   // Snapshot full pokemon states from step 2 onwards (needed for Imposter/Transform display)
   useEffect(() => {
@@ -433,7 +635,14 @@ export default function App() {
   const handleUserPaste = (text) => {
     setUserPasteText(text);
     setUserPasteError(null);
-    if (!text.trim()) return;
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    if (import.meta.env.DEV && trimmed === DEV_DEBUG_SETS_COMMAND) {
+      void seedDebugScenario().catch((error) => {
+        setUserPasteError(error.message || 'Could not seed debug scenario.');
+      });
+      return;
+    }
     const result = userSelectorRef.current?.loadShowdownSet(text);
     if (!result) return;
     if (!result.success) { setUserPasteError(result.error); return; }

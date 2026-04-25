@@ -78,6 +78,24 @@ const STAGE_TAG_LABELS = {
 };
 const EMPTY_EVS = { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
 const STAT_ORDER = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];
+const TRACE_POOL_LIMIT = 96;
+const TRACE_DEFENSE_PAIRS = [
+  [0, 0],
+  [252, 252],
+  [244, 252],
+  [240, 252],
+  [224, 252],
+  [208, 252],
+  [192, 224],
+  [178, 168],
+  [176, 168],
+  [164, 168],
+  [128, 208],
+  [76, 244],
+  [32, 248],
+];
+const TRACE_OFFENSE_VALUES = [0, 36, 76, 116, 164, 172, 208, 244, 252];
+const TRACE_STAT_LABELS = { hp: 'HP', atk: 'Atk', def: 'Def', spa: 'SpA', spd: 'SpD', spe: 'Spe' };
 const NATURE_BOOST = {
   Lonely: 'atk', Brave: 'atk', Adamant: 'atk', Naughty: 'atk',
   Bold: 'def', Relaxed: 'def', Impish: 'def', Lax: 'def',
@@ -216,27 +234,30 @@ function getAbilitySummary(fullState, fieldConditions, speedOnly = false) {
   const terrain = fieldConditions?.field?.terrain;
   const itemId = normId(fullState?.item?.name);
   const status = fullState?.status ?? null;
+  const paradoxActive =
+    (abilityId === 'protosynthesis' && (weather === 'sun' || weather === 'harshSunshine' || itemId === 'boosterenergy')) ||
+    (abilityId === 'quarkdrive' && (terrain === 'electric' || itemId === 'boosterenergy'));
 
   if (abilityId === 'guts' && status) return 'Guts active';
   if (abilityId === 'quickfeet' && status) return 'Quick Feet active';
   if (abilityId === 'poisonheal' && ['psn', 'tox'].includes(status)) return 'Poison Heal';
-  if (abilityId === 'protosynthesis') {
+  if (abilityId === 'protosynthesis' && paradoxActive) {
     if (fullState?.boostedStat === 'atk') return 'Protosynthesis (Attack)';
     if (fullState?.boostedStat === 'def') return 'Protosynthesis (Defense)';
     if (fullState?.boostedStat === 'spa') return 'Protosynthesis (Sp. Atk)';
     if (fullState?.boostedStat === 'spd') return 'Protosynthesis (Sp. Def)';
     if (fullState?.boostedStat === 'spe') return 'Protosynthesis (Speed)';
-    if (fullState?.boostedStat === 'auto' && (weather === 'sun' || weather === 'harshSunshine' || itemId === 'boosterenergy')) {
+    if (fullState?.boostedStat === 'auto') {
       return 'Protosynthesis';
     }
   }
-  if (abilityId === 'quarkdrive') {
+  if (abilityId === 'quarkdrive' && paradoxActive) {
     if (fullState?.boostedStat === 'atk') return 'Quark Drive (Attack)';
     if (fullState?.boostedStat === 'def') return 'Quark Drive (Defense)';
     if (fullState?.boostedStat === 'spa') return 'Quark Drive (Sp. Atk)';
     if (fullState?.boostedStat === 'spd') return 'Quark Drive (Sp. Def)';
     if (fullState?.boostedStat === 'spe') return 'Quark Drive (Speed)';
-    if (fullState?.boostedStat === 'auto' && (terrain === 'electric' || itemId === 'boosterenergy')) {
+    if (fullState?.boostedStat === 'auto') {
       return 'Quark Drive';
     }
   }
@@ -342,6 +363,247 @@ function getSmartUnlockedStats(constraints, userFullState, enemyPokemon, enemyFu
   });
 
   return next;
+}
+
+function getTraceMoveStats(move) {
+  if (move?.category === 'Special') return { offense: 'spa', defense: 'spd' };
+  return { offense: 'atk', defense: 'def' };
+}
+
+function withTraceEvs(baseEvs = EMPTY_EVS, updates = {}) {
+  return { ...EMPTY_EVS, ...baseEvs, ...updates };
+}
+
+function getTraceNatureMark(nature, statKey) {
+  if (NATURE_BOOST[nature] === statKey) return '+';
+  if (NATURE_DROP[nature] === statKey) return '-';
+  return '';
+}
+
+function formatTraceOffense(fullState, move, evs = fullState?.evs, stageOffset = 0) {
+  const { offense } = getTraceMoveStats(move);
+  const stage = (fullState?.stages?.[offense] ?? 0) + stageOffset;
+  const stageText = stage !== 0 ? `${stageLabel(stage)} ` : '';
+  const evText = evs?.[offense] ?? 0;
+  const natureText = getTraceNatureMark(fullState?.nature, offense);
+  return `${stageText}${evText}${natureText} ${TRACE_STAT_LABELS[offense]}`;
+}
+
+function formatTraceDefense(evs, defenseStat) {
+  return `${evs?.hp ?? 0} HP / ${evs?.[defenseStat] ?? 0} ${TRACE_STAT_LABELS[defenseStat]}`;
+}
+
+function formatTracePokemon(pokemon, fullState, { includeItem = false } = {}) {
+  const name = pokemon?.name ?? 'Pokemon';
+  const itemName = fullState?.item?.name;
+  return includeItem && itemName ? `${itemName} ${name}` : name;
+}
+
+function getTraceFieldText(fieldConditions, defenderSideKey) {
+  const parts = [];
+  const weather = fieldConditions?.field?.weather;
+  const terrain = fieldConditions?.field?.terrain;
+  const side = fieldConditions?.[defenderSideKey] ?? {};
+
+  if (WEATHER_LABELS[weather]) parts.push(`in ${WEATHER_LABELS[weather]}`);
+  if (TERRAIN_LABELS[terrain]) parts.push(`on ${TERRAIN_LABELS[terrain]}`);
+  if (side.friendGuard) parts.push("with an ally's Friend Guard");
+  if (side.reflect) parts.push('behind Reflect');
+  if (side.lightScreen) parts.push('behind Light Screen');
+  if (side.auroraVeil) parts.push('behind Aurora Veil');
+
+  return parts.join(' ');
+}
+
+function getTraceThreatStageOffset(threatFullState, constraint, offenseStat) {
+  if (!constraint.intimidateOn || offenseStat !== 'atk') return 0;
+  const abilityId = normId(threatFullState?.ability);
+
+  if (abilityId === 'defiant' || abilityId === 'contrary') return 1;
+  if (['clearbody', 'whitesmoke', 'fullmetalbody'].includes(abilityId)) return 0;
+  return -1;
+}
+
+function getTraceUserStageOffset(userFullState, constraint, offenseStat) {
+  const abilityId = normId(userFullState?.ability);
+  let offset = 0;
+
+  if (constraint.defiantSword) {
+    if (abilityId === 'defiant' && offenseStat === 'atk') offset += 2;
+    if (abilityId === 'competitive' && offenseStat === 'spa') offset += 2;
+  }
+
+  if (constraint.intimidateEnemy && offenseStat === 'atk') {
+    if (abilityId === 'defiant') offset += 1;
+    else if (!['clearbody', 'whitesmoke', 'fullmetalbody'].includes(abilityId)) offset -= 1;
+  }
+
+  return offset;
+}
+
+function formatTraceDamageLine({
+  attackerPokemon,
+  attackerFullState,
+  attackerEvs,
+  defenderPokemon,
+  defenderFullState,
+  defenderEvs,
+  move,
+  fieldConditions,
+  defenderSideKey,
+  stageOffset = 0,
+}) {
+  const moveName = move?.name ?? 'selected move';
+  const { defense } = getTraceMoveStats(move);
+  const fieldText = getTraceFieldText(fieldConditions, defenderSideKey);
+  const suffix = fieldText ? ` ${fieldText}` : '';
+
+  return `${formatTraceOffense(attackerFullState, move, attackerEvs, stageOffset)} ${formatTracePokemon(attackerPokemon, attackerFullState)} ${moveName} vs. ${formatTraceDefense(defenderEvs, defense)} ${formatTracePokemon(defenderPokemon, defenderFullState, { includeItem: true })}${suffix}: tracing rolls...`;
+}
+
+function buildShieldTraceLines({
+  constraint,
+  threat,
+  userPokemon,
+  userFullState,
+  fieldConditions,
+  unlockedStats,
+}) {
+  const move = threat?.fullState?.moves?.[constraint.enemyMoveIndex];
+  if (!move) return [];
+
+  const effectiveField = threat?.source === 'custom' ? (threat.fieldConditions ?? fieldConditions) : fieldConditions;
+  const { offense, defense } = getTraceMoveStats(move);
+  const baseUserEvs = { ...EMPTY_EVS, ...(userFullState?.evs ?? EMPTY_EVS) };
+  const stageOffset = getTraceThreatStageOffset(threat?.fullState, constraint, offense);
+
+  return TRACE_DEFENSE_PAIRS.map(([hp, defensiveEv]) => {
+    const candidateEvs = withTraceEvs(baseUserEvs, {
+      hp: unlockedStats?.hp ? hp : baseUserEvs.hp,
+      [defense]: unlockedStats?.[defense] ? defensiveEv : baseUserEvs[defense],
+    });
+
+    return formatTraceDamageLine({
+      attackerPokemon: threat?.pokemon,
+      attackerFullState: threat?.fullState,
+      attackerEvs: threat?.fullState?.evs,
+      defenderPokemon: userPokemon,
+      defenderFullState: userFullState,
+      defenderEvs: candidateEvs,
+      move,
+      fieldConditions: effectiveField,
+      defenderSideKey: 'userSide',
+      stageOffset,
+    });
+  });
+}
+
+function buildSwordTraceLines({
+  constraint,
+  userPokemon,
+  userFullState,
+  threat,
+  fieldConditions,
+  unlockedStats,
+}) {
+  const move = userFullState?.moves?.[constraint.userMoveIndex];
+  if (!move) return [];
+
+  const effectiveField = threat?.source === 'custom' ? (threat.fieldConditions ?? fieldConditions) : fieldConditions;
+  const { offense } = getTraceMoveStats(move);
+  const baseUserEvs = { ...EMPTY_EVS, ...(userFullState?.evs ?? EMPTY_EVS) };
+  const threatEvs = { ...EMPTY_EVS, ...(threat?.fullState?.evs ?? EMPTY_EVS) };
+  const stageOffset = getTraceUserStageOffset(userFullState, constraint, offense);
+
+  return TRACE_OFFENSE_VALUES.map((offensiveEv) => {
+    const attackerEvs = withTraceEvs(baseUserEvs, {
+      [offense]: unlockedStats?.[offense] ? offensiveEv : baseUserEvs[offense],
+    });
+
+    return formatTraceDamageLine({
+      attackerPokemon: userPokemon,
+      attackerFullState: userFullState,
+      attackerEvs,
+      defenderPokemon: threat?.pokemon,
+      defenderFullState: threat?.fullState,
+      defenderEvs: threatEvs,
+      move,
+      fieldConditions: effectiveField,
+      defenderSideKey: 'enemySide',
+      stageOffset,
+    });
+  });
+}
+
+function buildSpeedTraceLines({ constraint, userPokemon, userFullState, threat, unlockedStats }) {
+  const userName = userPokemon?.name ?? 'Pokemon';
+  const threatName = threat?.pokemon?.name ?? 'target';
+  const baseSpeed = userFullState?.evs?.spe ?? 0;
+  const speedValues = unlockedStats?.spe ? [0, 36, 76, 116, 156, 196, 236, 252] : [baseSpeed];
+  const yourStage = (userFullState?.stages?.spe ?? 0) + (constraint.yourExtraStage ?? 0) + (constraint.yourIcyWind ? -1 : 0);
+  const theirStage = (threat?.fullState?.stages?.spe ?? 0) + (constraint.theirExtraStage ?? 0) + (constraint.theirIcyWind ? -1 : 0);
+  const theirEvs = threat?.fullState?.evs?.spe ?? 0;
+
+  return speedValues.map((spe) => {
+    const yourStageText = yourStage !== 0 ? `${stageLabel(yourStage)} ` : '';
+    const theirStageText = theirStage !== 0 ? `${stageLabel(theirStage)} ` : '';
+    return `${userName} ${yourStageText}${spe} Spe${constraint.yourTailwind ? ' Tailwind' : ''}${constraint.yourScarf ? ' Choice Scarf' : ''} vs. ${threatName} ${theirStageText}${theirEvs} Spe${constraint.theirTailwind ? ' Tailwind' : ''}${constraint.theirScarf ? ' Choice Scarf' : ''}: comparing speed tiers...`;
+  });
+}
+
+function buildLoadingTraceLines({
+  userPokemon,
+  userFullState,
+  enemyPokemon,
+  enemyFullState,
+  enemyLevel,
+  constraints,
+  fieldConditions,
+  unlockedStats,
+}) {
+  const lines = [];
+
+  constraints.forEach((constraint) => {
+    const threat = getThreatForConstraint(constraint, enemyPokemon, enemyFullState, enemyLevel);
+    if (!threat?.pokemon || !threat?.fullState) return;
+
+    if (constraint.type === 'shield') {
+      lines.push(...buildShieldTraceLines({
+        constraint,
+        threat,
+        userPokemon,
+        userFullState,
+        fieldConditions,
+        unlockedStats,
+      }));
+    } else if (constraint.type === 'sword') {
+      lines.push(...buildSwordTraceLines({
+        constraint,
+        userPokemon,
+        userFullState,
+        threat,
+        fieldConditions,
+        unlockedStats,
+      }));
+    } else if (constraint.type === 'scarf') {
+      lines.push(...buildSpeedTraceLines({
+        constraint,
+        userPokemon,
+        userFullState,
+        threat,
+        unlockedStats,
+      }));
+    }
+  });
+
+  const uniqueLines = [...new Set(lines)].filter(Boolean).slice(0, TRACE_POOL_LIMIT);
+  if (uniqueLines.length > 0) return uniqueLines;
+
+  return [
+    'Preparing EV candidates: tracing rolls...',
+    'Building legal spread window: comparing constraints...',
+    'Filtering impossible rows: checking assumptions...',
+  ];
 }
 
 function getConstraintAssumptions(constraint, userFullState, enemyPokemon, enemyFullState, enemyLevel, fieldConditions) {
@@ -835,6 +1097,7 @@ export default function Results({
   const [loading, setLoading] = useState(false);
   const [progressValue, setProgressValue] = useState(0);
   const [progressLabel, setProgressLabel] = useState('Preparing calculation...');
+  const [traceLines, setTraceLines] = useState([]);
   const [error, setError] = useState(null);
   const [showAll, setShowAll] = useState(false);
   const smartUnlockedStats = getSmartUnlockedStats(constraints, userFullState, enemyPokemon, enemyFullState, enemyLevel);
@@ -884,11 +1147,22 @@ export default function Results({
     let progressInterval = null;
     let calcTimeout = null;
     let finishTimeout = null;
+    const tracePool = buildLoadingTraceLines({
+      userPokemon,
+      userFullState,
+      enemyPokemon,
+      enemyFullState,
+      enemyLevel,
+      constraints,
+      fieldConditions,
+      unlockedStats,
+    });
     const startedAt = performance.now();
 
     setLoading(true);
     setProgressValue(8);
     setProgressLabel('Preparing brute force...');
+    setTraceLines(tracePool);
     setError(null);
     setShowAll(false);
     onCalculatingChange?.(true);
@@ -911,12 +1185,12 @@ export default function Results({
           userLevel,
           enemyPokemon,
           enemyFullState,
-            enemyLevel,
-            constraints,
-            fieldConditions,
-            unlockedStats,
-            optimizeNature,
-          });
+          enemyLevel,
+          constraints,
+          fieldConditions,
+          unlockedStats,
+          optimizeNature,
+        });
         if (cancelled) return;
 
         const elapsed = performance.now() - startedAt;
@@ -932,6 +1206,7 @@ export default function Results({
           setResult(nextResult);
           setLoading(false);
           setProgressValue(0);
+          setTraceLines([]);
           onCalculatingChange?.(false);
         }, waitForMinimum + FINISH_ANIMATION_MS);
       } catch (calcError) {
@@ -946,6 +1221,7 @@ export default function Results({
           setError(calcError.message || 'Unknown error during calculation.');
           setLoading(false);
           setProgressValue(0);
+          setTraceLines([]);
           onCalculatingChange?.(false);
         }, waitForMinimum + FINISH_ANIMATION_MS);
       }
@@ -1010,9 +1286,19 @@ export default function Results({
     setUnlockedStats(smartUnlockedStats);
   };
 
+  const traceStreamLines = traceLines.length > 0 ? [...traceLines, ...traceLines] : [];
   const loadingOverlay = loading ? createPortal(
     <div className="results-loading-overlay" role="status" aria-live="polite">
       <div className="results-loading-backdrop" />
+      <div className="results-loading-trace" aria-hidden="true">
+        <div className="results-loading-trace-scroll">
+          {traceStreamLines.map((line, index) => (
+            <div className="results-loading-trace-line" key={`${index}-${line}`}>
+              {line}
+            </div>
+          ))}
+        </div>
+      </div>
       <div className="results-loading-panel">
         <div className="results-loading-copy">
           <span className="results-loading-kicker">Step 7</span>

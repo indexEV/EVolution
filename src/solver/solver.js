@@ -61,6 +61,14 @@ const SPEED_WEATHER_ABILITIES = {
 const SPEED_TERRAIN_ABILITIES = {
   surgesurfer: ['electric'],
 };
+const DAMAGE_REDUCTION_BERRIES = new Set([
+  'babiriberry', 'chartiberry', 'chilanberry', 'chopleberry', 'cobaberry',
+  'colburberry', 'habanberry', 'kasibberry', 'kebiaberry', 'occaberry',
+  'passhoberry', 'payapaberry', 'rindoberry', 'roseliberry', 'shucaberry',
+  'tangaberry', 'wacanberry', 'yacheberry',
+]);
+const CONFUSION_BERRIES = new Set(['aguavberry', 'figyberry', 'iapapaberry', 'magoberry', 'wikiberry']);
+const GUARANTEED_SUCCESS_RATE = 1;
 
 function actualEvs(evs = EMPTY_EVS) {
   return { ...EMPTY_EVS, ...evs };
@@ -76,6 +84,27 @@ function normId(value) {
 
 function hasItem(fullState, itemName) {
   return normId(fullState?.item?.name ?? '') === normId(itemName);
+}
+
+function hasDamageReductionBerry(fullState) {
+  return DAMAGE_REDUCTION_BERRIES.has(normId(fullState?.item?.name ?? ''));
+}
+
+function getItemId(fullState) {
+  return normId(fullState?.item?.name ?? '');
+}
+
+function hasType(pokemon, typeName) {
+  return (pokemon?.types ?? []).includes(typeName);
+}
+
+function isGrounded(pokemon, fullState) {
+  const abilityId = normId(fullState?.ability ?? '');
+  const itemId = getItemId(fullState);
+  if (itemId === 'ironball') return true;
+  if (itemId === 'airballoon') return false;
+  if (abilityId === 'levitate') return false;
+  return !hasType(pokemon, 'Flying');
 }
 
 // ─── Stat formulas ───────────────────────────────────────────────────────────
@@ -98,21 +127,31 @@ function getEffectiveHpForState(pokemon, fullState, evOverride, level = 100) {
   return { maxHp, currentHp };
 }
 
+function isParadoxAbilityActiveForState(fullState, fieldConditions = null) {
+  const abilityId = normId(fullState?.ability ?? '');
+  if (abilityId !== 'protosynthesis' && abilityId !== 'quarkdrive') return false;
+
+  const boostedStat = fullState?.boostedStat ?? undefined;
+  if (!boostedStat || boostedStat === 'disabled') return false;
+
+  const itemId = normId(fullState?.item?.name ?? '');
+  const weather = fieldConditions?.field?.weather ?? null;
+  const terrain = fieldConditions?.field?.terrain ?? null;
+
+  return (
+    (abilityId === 'protosynthesis' && (weather === 'sun' || weather === 'harshSunshine' || itemId === 'boosterenergy')) ||
+    (abilityId === 'quarkdrive' && (terrain === 'electric' || itemId === 'boosterenergy'))
+  );
+}
+
 function getParadoxBoostedStatForState(pokemon, fullState, fieldConditions = null, evOverrides = {}, level = 100) {
   const abilityId = normId(fullState?.ability ?? '');
   if (abilityId !== 'protosynthesis' && abilityId !== 'quarkdrive') return null;
 
   const boostedStat = fullState?.boostedStat ?? undefined;
   if (!boostedStat) return null;
+  if (!isParadoxAbilityActiveForState(fullState, fieldConditions)) return null;
   if (boostedStat !== 'auto') return boostedStat;
-
-  const itemId = normId(fullState?.item?.name ?? '');
-  const weather = fieldConditions?.field?.weather ?? null;
-  const terrain = fieldConditions?.field?.terrain ?? null;
-  const active =
-    (abilityId === 'protosynthesis' && (weather === 'sun' || weather === 'harshSunshine' || itemId === 'boosterenergy')) ||
-    (abilityId === 'quarkdrive' && (terrain === 'electric' || itemId === 'boosterenergy'));
-  if (!active) return null;
 
   const nature = fullState?.nature ?? 'Hardy';
   const evs = { ...(fullState?.evs ?? {}), ...evOverrides };
@@ -126,6 +165,11 @@ function getParadoxBoostedStatForState(pokemon, fullState, fieldConditions = nul
   }
 
   return bestStat;
+}
+
+function getResolvedBoostedStatForCalc(speciesName, fullState, fieldConditions = null, evOverride = undefined, level = 100) {
+  const species = GEN.species.get(speciesName);
+  return getParadoxBoostedStatForState(species, fullState, fieldConditions, evOverride, level) ?? undefined;
 }
 
 function getAbilitySpeedMultiplier(fullState, fieldConditions) {
@@ -243,14 +287,15 @@ function findMinActualEv(startEv, maxEv, pred) {
 // Returns {maxDmg, defMaxHp, result} for given defender testEvs
 function calcIncoming(threatSpeciesName, threatFullState, threatBoosts,
                       userSpeciesName, userFullState, testEvs,
-                      moveName, isCrit, fc, threatLevel = 100, userLevel = 100) {
+                      moveName, isCrit, fc, threatLevel = 100, userLevel = 100,
+                      moveOptions = {}) {
   const atk = new Pokemon(GEN, threatSpeciesName, {
     item:    threatFullState.item?.name   ?? undefined,
     nature:  threatFullState.nature       ?? 'Hardy',
     evs:     threatFullState.evs          ?? {},
     ivs:     threatFullState.ivs          ?? {},
     ability: threatFullState.ability      ?? undefined,
-    boostedStat: threatFullState.boostedStat ?? undefined,
+    boostedStat: getResolvedBoostedStatForCalc(threatSpeciesName, threatFullState, fc, threatFullState.evs, threatLevel),
     boosts:  threatBoosts,
     curHP:   threatFullState.currentHp    ?? undefined,
     level:   threatLevel,
@@ -261,13 +306,15 @@ function calcIncoming(threatSpeciesName, threatFullState, threatBoosts,
     evs:     testEvs,
     ivs:     userFullState.ivs           ?? {},
     ability: userFullState.ability       ?? undefined,
-    boostedStat: userFullState.boostedStat ?? undefined,
+    boostedStat: getResolvedBoostedStatForCalc(userSpeciesName, userFullState, fc, testEvs, userLevel),
     status:  STATUS_MAP[userFullState.status] ?? undefined,
     boosts:  userFullState.stages        ?? {},
     curHP:   userFullState.currentHp     ?? undefined,
     level:   userLevel,
   });
-  const move = new Move(GEN, moveName, { isCrit: !!isCrit });
+  const move = new Move(GEN, moveName, moveOptions.singleTarget
+    ? { isCrit: !!isCrit, overrides: { target: 'normal' } }
+    : { isCrit: !!isCrit });
   const field = makeField(fc, 'enemySide', 'userSide');
   return calculate(GEN, atk, def, move, field);
 }
@@ -275,14 +322,15 @@ function calcIncoming(threatSpeciesName, threatFullState, threatBoosts,
 // ─── KO constraint check ─────────────────────────────────────────────────────
 function calcOutgoing(userSpeciesName, userFullState, userBoosts, testEvs,
                       threatSpeciesName, threatFullState,
-                      moveName, isCrit, fc, userLevel = 100, threatLevel = 100) {
+                      moveName, isCrit, fc, userLevel = 100, threatLevel = 100,
+                      moveOptions = {}) {
   const atk = new Pokemon(GEN, userSpeciesName, {
     item:    userFullState.item?.name    ?? undefined,
     nature:  userFullState.nature        ?? 'Hardy',
     evs:     testEvs,
     ivs:     userFullState.ivs           ?? {},
     ability: userFullState.ability       ?? undefined,
-    boostedStat: userFullState.boostedStat ?? undefined,
+    boostedStat: getResolvedBoostedStatForCalc(userSpeciesName, userFullState, fc, testEvs, userLevel),
     status:  STATUS_MAP[userFullState.status] ?? undefined,
     boosts:  userBoosts,
     curHP:   userFullState.currentHp     ?? undefined,
@@ -294,12 +342,14 @@ function calcOutgoing(userSpeciesName, userFullState, userBoosts, testEvs,
     evs:     threatFullState.evs          ?? {},
     ivs:     threatFullState.ivs          ?? {},
     ability: threatFullState.ability      ?? undefined,
-    boostedStat: threatFullState.boostedStat ?? undefined,
+    boostedStat: getResolvedBoostedStatForCalc(threatSpeciesName, threatFullState, fc, threatFullState.evs, threatLevel),
     boosts:  threatFullState.stages       ?? {},
     curHP:   threatFullState.currentHp    ?? undefined,
     level:   threatLevel,
   });
-  const move = new Move(GEN, moveName, { isCrit: !!isCrit });
+  const move = new Move(GEN, moveName, moveOptions.singleTarget
+    ? { isCrit: !!isCrit, overrides: { target: 'normal' } }
+    : { isCrit: !!isCrit });
   const field = makeField(fc, 'userSide', 'enemySide');
   return calculate(GEN, atk, def, move, field);
 }
@@ -333,18 +383,49 @@ function userBoostsForKO(userFullState, c) {
   return boosts;
 }
 
-// Recovery per turn (for survive calculations)
-function recoveryPerTurn(userFullState, maxHp) {
-  const itemName = (userFullState.item?.name ?? '').toLowerCase().replace(/[^a-z]/g, '');
-  if (itemName === 'leftovers')  return Math.floor(maxHp / 16);
-  if (itemName === 'blacksludge') {
-    // Only Poison types heal; others take damage — handled by calc, skip here
-    return Math.floor(maxHp / 16);
+// Recurring end-of-turn recovery/residual between repeated-hit checks.
+function recoveryPerTurn(pokemon, fullState, maxHp, fieldConditions = null, sideKey = null) {
+  const itemId = getItemId(fullState);
+  const abilityId = normId(fullState?.ability ?? '');
+  const side = sideKey ? (fieldConditions?.[sideKey] ?? {}) : {};
+  let recovery = 0;
+  if (itemId === 'leftovers') recovery += Math.floor(maxHp / 16);
+  if (itemId === 'blacksludge') {
+    recovery += hasType(pokemon, 'Poison') ? Math.floor(maxHp / 16) : -Math.floor(maxHp / 8);
   }
-  const ab = (userFullState.ability ?? '').toLowerCase().replace(/[^a-z]/g, '');
-  if (ab === 'poisonheal' && ['psn','tox'].includes(userFullState.status))
-    return Math.floor(maxHp / 8);
-  return 0;
+  const ab = abilityId;
+  if (ab === 'poisonheal' && ['psn', 'tox'].includes(fullState.status)) {
+    recovery += Math.floor(maxHp / 8);
+  }
+  if (fieldConditions?.field?.terrain === 'grassy' && isGrounded(pokemon, fullState)) {
+    recovery += Math.floor(maxHp / 16);
+  }
+  if (side.leechSeed) recovery -= Math.floor(maxHp / 8);
+  if (side.saltCure) {
+    recovery -= Math.floor(maxHp / (hasType(pokemon, 'Water') || hasType(pokemon, 'Steel') ? 4 : 8));
+  }
+
+  return recovery;
+}
+
+function applyOneTimeHealingItem(hp, maxHp, fullState, healItemUsed) {
+  if (hp <= 0 || healItemUsed) return { hp, healItemUsed };
+
+  const itemId = getItemId(fullState);
+  if (itemId === 'sitrusberry' && hp <= Math.floor(maxHp / 2)) {
+    return { hp: Math.min(maxHp, hp + Math.floor(maxHp / 4)), healItemUsed: true };
+  }
+  if (itemId === 'oranberry' && hp <= Math.floor(maxHp / 2)) {
+    return { hp: Math.min(maxHp, hp + 10), healItemUsed: true };
+  }
+  if (itemId === 'berryjuice' && hp <= Math.floor(maxHp / 2)) {
+    return { hp: Math.min(maxHp, hp + 20), healItemUsed: true };
+  }
+  if (CONFUSION_BERRIES.has(itemId) && hp <= Math.floor(maxHp / 4)) {
+    return { hp: Math.min(maxHp, hp + Math.floor(maxHp / 3)), healItemUsed: true };
+  }
+
+  return { hp, healItemUsed };
 }
 
 function surviveHitsRequired(mode) {
@@ -389,11 +470,19 @@ function getDamageRolls(damage) {
 }
 
 function getRepeatedHitDistribution(rolls, hits, recoveryPerTurn = 0) {
+  return getRepeatedHitDistributionForRollGroups(
+    Array.from({ length: hits }, () => rolls),
+    recoveryPerTurn
+  );
+}
+
+function getRepeatedHitDistributionForRollGroups(rollGroups, recoveryPerTurn = 0) {
   let distribution = new Map([[0, 1]]);
 
-  for (let hit = 0; hit < hits; hit += 1) {
+  for (let hit = 0; hit < rollGroups.length; hit += 1) {
     const next = new Map();
     const recoveryBeforeHit = hit === 0 ? 0 : recoveryPerTurn;
+    const rolls = rollGroups[hit] ?? [0];
 
     for (const [total, count] of distribution.entries()) {
       for (const roll of rolls) {
@@ -406,6 +495,21 @@ function getRepeatedHitDistribution(rolls, hits, recoveryPerTurn = 0) {
   }
 
   return distribution;
+}
+
+function getDistributionRange(distribution) {
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+
+  distribution.forEach((_, totalDamage) => {
+    if (totalDamage < min) min = totalDamage;
+    if (totalDamage > max) max = totalDamage;
+  });
+
+  return [
+    min === Number.POSITIVE_INFINITY ? 0 : min,
+    max === Number.NEGATIVE_INFINITY ? 0 : max,
+  ];
 }
 
 function getDistributionSuccessRate(distribution, predicate) {
@@ -441,11 +545,11 @@ function getKoSuccessRate(mode, damage, maxHp, recovery) {
 }
 
 export function passesGuaranteedKoRate(successRate) {
-  return successRate >= 1;
+  return successRate >= GUARANTEED_SUCCESS_RATE;
 }
 
 export function passesGuaranteedSurviveRate(successRate) {
-  return successRate >= 1;
+  return successRate >= GUARANTEED_SUCCESS_RATE;
 }
 
 export function passesOutspeedComparison(mySpe, theirSpe) {
@@ -605,6 +709,7 @@ export function solveSpreads({
         offKey: moveData.category === 'Special' ? 'spa' : 'atk',
         uBoosts: userBoostsForKO(userFullState, constraint),
         isCrit: userFullState.crits?.[constraint.userMoveIndex] || false,
+        singleTargetDamage: !!constraint.singleTargetDamage,
       };
     }
 
@@ -620,6 +725,7 @@ export function solveSpreads({
         defKey: moveData.category === 'Special' ? 'spd' : 'def',
         tBoosts: threatBoostsAfterIntimidate(tState, constraint.intimidateOn),
         isCrit: tState.crits?.[constraint.enemyMoveIndex] || false,
+        singleTargetDamage: !!constraint.singleTargetDamage,
       };
     }
 
@@ -628,6 +734,87 @@ export function solveSpreads({
     }
 
     return base;
+  }
+
+  function buildSurviveDistribution(prepared, evs, firstResult, recovery, currentHp, maxHp) {
+    const hits = surviveHitsRequired(prepared.c.survive);
+    const firstRolls = getDamageRolls(firstResult.damage);
+    const rollGroups = [firstRolls];
+
+    if (hits > 1) {
+      let laterRolls = firstRolls;
+
+      if (hasDamageReductionBerry(userFullState)) {
+        const userStateAfterBerry = { ...userFullState, item: null };
+        const laterResult = calcIncoming(
+          prepared.threat.name,
+          prepared.tState,
+          prepared.tBoosts,
+          userPokemon.name,
+          userStateAfterBerry,
+          evs,
+          prepared.moveName,
+          prepared.isCrit,
+          prepared.constraintFieldConditions,
+          prepared.threatLevel,
+          userLevel,
+          { singleTarget: prepared.singleTargetDamage }
+        );
+        const candidateRolls = getDamageRolls(laterResult.damage);
+        const [, firstMax] = firstResult.range();
+        const [, laterMax] = laterResult.range();
+        if (laterMax > firstMax) laterRolls = candidateRolls;
+      }
+
+      for (let hit = 1; hit < hits; hit += 1) {
+        rollGroups.push(laterRolls);
+      }
+    }
+
+    const itemId = getItemId(userFullState);
+    let states = new Map([[`${currentHp}:0:0`, { hp: currentHp, sashUsed: false, healItemUsed: false, count: 1 }]]);
+
+    for (let hit = 0; hit < rollGroups.length; hit += 1) {
+      const next = new Map();
+      const rolls = rollGroups[hit] ?? [0];
+
+      for (const state of states.values()) {
+        for (const roll of rolls) {
+          let hp = state.hp;
+          if (hit > 0 && hp > 0) hp = Math.min(maxHp, hp + recovery);
+          let sashUsed = state.sashUsed;
+          let healItemUsed = state.healItemUsed;
+
+          if (hp <= 0) {
+            // Already fainted on a previous hit; it cannot be recovered by later turn effects.
+          } else if (itemId === 'focussash' && !sashUsed && hp === maxHp && roll >= hp) {
+            hp = 1;
+            sashUsed = true;
+          } else {
+            hp -= roll;
+          }
+
+          const healed = applyOneTimeHealingItem(hp, maxHp, userFullState, healItemUsed);
+          hp = healed.hp;
+          healItemUsed = healed.healItemUsed;
+
+          const key = `${hp}:${sashUsed ? 1 : 0}:${healItemUsed ? 1 : 0}`;
+          const existing = next.get(key);
+          if (existing) existing.count += state.count;
+          else next.set(key, { hp, sashUsed, healItemUsed, count: state.count });
+        }
+      }
+
+      states = next;
+    }
+
+    const distribution = new Map();
+    for (const state of states.values()) {
+      const effectiveDamage = currentHp - state.hp;
+      distribution.set(effectiveDamage, (distribution.get(effectiveDamage) ?? 0) + state.count);
+    }
+
+    return distribution;
   }
 
   function evaluatePreparedConstraint(prepared, evs) {
@@ -657,26 +844,35 @@ export function solveSpreads({
           prepared.isCrit,
           prepared.constraintFieldConditions,
           prepared.threatLevel,
-          userLevel
+          userLevel,
+          { singleTarget: prepared.singleTargetDamage }
         );
         const [minDmg, maxDmg] = result.range();
         const { maxHp: defMaxHp, currentHp: defCurrentHpRaw } = getEffectiveHpForState(userPokemon, userFullState, evs, userLevel);
         const defCurrentHp = Math.max(1, defCurrentHpRaw);
-        const recovery = recoveryPerTurn(userFullState, defMaxHp);
-        const rolls = getDamageRolls(result.damage);
-        const distribution = getRepeatedHitDistribution(rolls, surviveHitsRequired(prepared.c.survive), recovery);
+        const recovery = recoveryPerTurn(
+          userPokemon,
+          userFullState,
+          defMaxHp,
+          prepared.constraintFieldConditions,
+          'userSide'
+        );
+        const distribution = buildSurviveDistribution(prepared, evs, result, recovery, defCurrentHp, defMaxHp);
         const successRate = getDistributionSuccessRate(distribution, (totalDamage) => passesStrictSurviveTotalDamage(totalDamage, defCurrentHp));
         const passed = passesGuaranteedSurviveRate(successRate);
-        let worstTotalDamage = Number.NEGATIVE_INFINITY;
-        distribution.forEach((_, totalDamage) => {
-          if (totalDamage > worstTotalDamage) worstTotalDamage = totalDamage;
-        });
-        const pMin = (minDmg / defCurrentHp * 100).toFixed(1);
-        const pMax = (maxDmg / defCurrentHp * 100).toFixed(1);
+        const [minTotalDamage, worstTotalDamage] = getDistributionRange(distribution);
+        const displayMin = surviveHitsRequired(prepared.c.survive) > 1 ? minTotalDamage : minDmg;
+        const displayMax = surviveHitsRequired(prepared.c.survive) > 1 ? worstTotalDamage : maxDmg;
+        const pMin = (displayMin / defCurrentHp * 100).toFixed(1);
+        const pMax = (displayMax / defCurrentHp * 100).toFixed(1);
+        const hitCount = surviveHitsRequired(prepared.c.survive);
+        const desc = hitCount > 1
+          ? `${result.desc()} | ${hitCount} hits total: ${displayMin}-${displayMax} (${pMin} - ${pMax}%)`
+          : result.desc();
         return {
           c: prepared.c,
           passed,
-          desc: result.desc(),
+          desc,
           range: `${pMin}% - ${pMax}%`,
           threat: prepared.threat,
           successRate,
@@ -697,12 +893,19 @@ export function solveSpreads({
           prepared.isCrit,
           prepared.constraintFieldConditions,
           userLevel,
-          prepared.threatLevel
+          prepared.threatLevel,
+          { singleTarget: prepared.singleTargetDamage }
         );
         const [minDmg, maxDmg] = result.range();
         const { maxHp: defMaxHp, currentHp: defCurrentHpRaw } = getEffectiveHpForState(prepared.threat, prepared.tState, prepared.tState.evs, prepared.threatLevel);
         const defCurrentHp = Math.max(1, defCurrentHpRaw);
-        const recovery = recoveryPerTurn(prepared.tState, defMaxHp);
+        const recovery = recoveryPerTurn(
+          prepared.threat,
+          prepared.tState,
+          defMaxHp,
+          prepared.constraintFieldConditions,
+          'enemySide'
+        );
         const rolls = getDamageRolls(result.damage);
         const distribution = getRepeatedHitDistribution(rolls, koHitsRequired(prepared.c.achieve), recovery);
         const successRate = getDistributionSuccessRate(distribution, (totalDamage) => passesGuaranteedKoTotalDamage(totalDamage, defCurrentHp));
